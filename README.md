@@ -4,7 +4,11 @@
 
 **PersonalAccounting** centralizes receipt tracking by forwarding transaction emails from multiple accounts to one platform. It extracts key details, sends real-time notifications via Telegram, and lets users ask AI to look up receipts, generate summaries, or even provide daily financial reports, making personal accounting more efficient and automated.
 
-![You ask, your AI answer](docs/argus-chi-tieu.jpg)
+<p align="center">
+      <img src="./docs/argus-personalaccounting-notification.png" align="left">
+      <img src="./docs/argus-personalaccounting-queries.png">
+      <img src="./docs/argus-personalaccounting-scheduled.png" align="right">
+</p>
 
 ## Application flow
 
