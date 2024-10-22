@@ -24,8 +24,9 @@ const app = new Hono<{
     Bindings: Environment
 }>()
 
-function escapeMarkdownV2(text) {
+function normalize(text) {
     return text
+        // Escape MarkdownV2
         .replace(/_/g, '\\_')
         .replace(/\[/g, '\\[')
         .replace(/\]/g, '\\]')
@@ -42,25 +43,35 @@ function escapeMarkdownV2(text) {
         .replace(/\{/g, '\\{')
         .replace(/\}/g, '\\}')
         .replace(/\./g, '\\.')
-        .replace(/!/g, '\\!');
+        .replace(/!/g, '\\!')
+        // Remove citation
+        .replace(/【\d+:\d+†source】/g, '');
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function formatTransactionDetails(details: any) {
+    if (details.error) {
+        return `Transaction error: ${details.error}`;
+    }
+
+    return `💳 *Có giao dịch thẻ mới nè*\n\n${details.message}\n\n*Từ:* ${details.bank_name || "N/A"}\n*Ngày:* ${details.datetime || "N/A"}\n------------------`;
+}
+
 app.post('/assistant', async (c) => {
     if (c.req.header('X-Telegram-Bot-Api-Secret-Token') != c.env.TELEGRAM_BOT_SECRET_TOKEN) {
         console.error("🔐 Authentication failed here")
-        return c.text("You are not welcome here")
+        return c.text("🔐 You are not welcome here")
     }
 
     const body = await c.req.json()
-    console.info("🔫 Received new request", body.message)
+    console.info("🔫 Received new assistant request:", body.message.text)
 
     const openai = new OpenAI({
         project: c.env.OPENAI_PROJECT_ID,
         apiKey: c.env.OPENAI_API_KEY,
     });
-    
+
     let run = await openai.beta.threads.createAndRun({
         assistant_id: c.env.OPENAI_ASSISTANT_ID,
         thread: {
@@ -69,7 +80,7 @@ app.post('/assistant', async (c) => {
             ],
         },
     });
-    console.info("🔫 Create threads and run successfully", run.thread_id)
+    console.info("🔫 Create thread and run successfully:", run.thread_id)
 
     while (run.status === "queued" || run.status === "in_progress") {
         // Retrieve the updated run status
@@ -77,6 +88,7 @@ app.post('/assistant', async (c) => {
             run.thread_id,
             run.id
         );
+        console.info("🔫 Waiting thread to completed", run.thread_id)
         await sleep(500);
     }
 
@@ -85,32 +97,32 @@ app.post('/assistant', async (c) => {
         run_id: run.id
     });
 
-    const msg = `🥳 Báo cáo cuối ngày tới rồi đêi\n\n${threadMessages.data[0].content[0].text.value.replace(/【\d+:\d+†source】/g, '')}\n-------------------`;
-
-    console.info("🔫 Message process successfully", escapeMarkdownV2(msg))
+    const msg = normalize(threadMessages.data[0].content[0].text.value);
+    console.info("🔫 Message process successfully:", msg)
 
     const bot = new Telegraf(c.env.TELEGRAM_BOT_TOKEN);
-    await bot.telegram.sendMessage(c.env.TELEGRAM_CHAT_ID, escapeMarkdownV2(msg), {
+    await bot.telegram.sendMessage(c.env.TELEGRAM_CHAT_ID, msg, {
         parse_mode: "MarkdownV2",
         reply_parameters: {
             message_id: body.message.message_id
         }
     }).then(() => {
-        console.info("🏄 Send Telegram response successfully")
+        console.info("🔫 Send Telegram response successfully")
     })
 
-    return c.text("Okay");
+    return c.text("🔫 Okay");
 })
 
 export default {
     fetch: app.fetch,
-    async scheduled(env: Environment) {
+    async scheduled(event, env: Environment) {
+        console.info("⏰ Scheduler is triggered");
         const openai = new OpenAI({
             project: env.OPENAI_PROJECT_ID,
             apiKey: env.OPENAI_API_KEY,
         });
-    
-        const currentDate = new Date().toLocaleDateString('en-GB');
+
+        const currentDate = new Date().toLocaleDateString('vi-VN', { timeZone: "Asia/Bangkok" });
         let run = await openai.beta.threads.createAndRun({
             assistant_id: env.OPENAI_ASSISTANT_ID,
             thread: {
@@ -119,65 +131,63 @@ export default {
                 ],
             },
         });
-        console.info("🔫 Create scheduled threads and run successfully", currentDate, run.thread_id)
-    
+        console.info("⏰ Create scheduled thread and run successfully:", currentDate, run.thread_id);
+
         while (run.status === "queued" || run.status === "in_progress") {
             // Retrieve the updated run status
             run = await openai.beta.threads.runs.retrieve(
                 run.thread_id,
                 run.id
             );
+            console.info("⏰ Waiting thread to completed", run.thread_id)
             await sleep(500);
         }
-    
+
         const threadMessages = await openai.beta.threads.messages.list(
             run.thread_id, {
             run_id: run.id
         });
-    
-        const msg = threadMessages.data[0].content[0].text.value.replace(/【\d+:\d+†source】/g, '')
-        console.info("🔫 Message process successfully", escapeMarkdownV2(msg))
-    
+
+        const msg = normalize(`🥳 Báo cáo cuối ngày tới rồi đêi\n\n${threadMessages.data[0].content[0].text.value}\n------------------`)
+        console.info("⏰ Message process successfully:", msg)
+
         const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
-        await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, escapeMarkdownV2(msg), {
-            parse_mode: "MarkdownV2",
-        }).then(() => {
-            console.info("🏄 Send Telegram scheduled message successfully")
+        await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, msg, { parse_mode: "MarkdownV2" }).then(() => {
+            console.info("⏰ Send Telegram scheduled message successfully")
         })
-    
-        return "Should be okay";
+
+        return "⏰ Should be okay";
     },
+
     async email(message, env: Environment) {
         // Parse the email using PostalMime
         const parser = new PostalMime();
         const body = await new Response(message.raw).arrayBuffer();
         const email = await parser.parse(body);
-        console.info("📬 New mail arrived", email.text)
+        console.info("📬 New mail arrived:", email.text)
 
         const emailContent = email.text || email.html;
         if (!emailContent) {
-            throw new Error("Email content is empty");
+            throw new Error("📬 Email content is empty");
         }
+
         const emailDate = email.date;
         const emailFromName = email.from.name;
-
         const emailData = `Email date: ${emailDate}\nEmail sender: ${emailFromName}\nEmail content:\n${emailContent}`;
         const transactionDetails = await this.processEmail(emailData, env);
 
         if (transactionDetails === false) return "Not okay";
 
         // Handle storing and notifying separately
-        await this.storeTransaction(transactionDetails, env);
-        await this.notifyServices(transactionDetails, env);
+        await Promise.all([
+            this.storeTransaction(transactionDetails, env),
+            this.notifyServices(transactionDetails, env)
+        ]);
 
         return "Okay";
     },
 
     async processEmail(emailData: string, env: Environment) {
-        if (!emailData) {
-            throw new Error("Email content is empty");
-        }
-
         const openai = new OpenAI({
             project: env.OPENAI_PROJECT_ID,
             apiKey: env.OPENAI_API_KEY,
@@ -197,11 +207,11 @@ export default {
         try {
             transactionDetails = JSON.parse(extractedData);
             if (transactionDetails.result === "failed") {
-                console.info("📬 Not a transaction email. Notification disabled.");
+                console.warn("📬 Not a transaction email. Notification disabled.");
                 return false;
             }
         } catch (e) {
-            return console.error("Unable to parse transaction details");
+            return console.error("📬 Unable to parse transaction details");
         }
 
         return transactionDetails;
@@ -234,7 +244,7 @@ export default {
 
         // Check if the response is okay
         if (!uploadResponse.ok) {
-            throw new Error(`Upload transaction file error: ${uploadResponse.statusText}`);
+            throw new Error(`🤖 Upload transaction file error: ${uploadResponse.statusText}`);
         }
 
         console.info(`🤖 Upload ${fileName} successfully`)
@@ -253,34 +263,27 @@ export default {
 
         // Check if the response for adding to vector store is okay
         if (!vectorStoreResponse.ok) {
-            throw new Error(`Error adding file to vector store: ${vectorStoreResponse.statusText}`);
+            throw new Error(`🤖 Error adding file to vector store: ${vectorStoreResponse.statusText}`);
         }
 
         console.info(`🤖 Add ${fileName} to Vector store successfully`)
 
-        // Return the response from the vector store
-        return vectorStoreResponse.json();
+        return;
     },
 
     async notifyServices(details: any, env: Environment) {
-        await this.sendTelegramNotification(details, env);
+        await Promise.all([
+            this.sendTelegramNotification(details, env)
+        ]);
         // Future services (e.g., SMS) can be added here
     },
 
     async sendTelegramNotification(details: any, env: Environment) {
         const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
 
-        const humanReadableText = this.formatTransactionDetails(details);
-        await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, escapeMarkdownV2(humanReadableText), { parse_mode: "MarkdownV2" }).then(() => {
+        const msg = formatTransactionDetails(details);
+        await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, normalize(msg), { parse_mode: "MarkdownV2" }).then(() => {
             console.info("🏄 Send Telegram notification successfully")
         })
-    },
-
-    formatTransactionDetails(details: any) {
-        if (details.error) {
-            return `Transaction error: ${details.error}`;
-        }
-
-        return `💳 *Có giao dịch thẻ mới nè*\n\n${details.message}\n\n*Từ:* ${details.bank_name || "N/A"}\n*Ngày:* ${details.datetime || "N/A"}\n------------------`;
     },
 }
