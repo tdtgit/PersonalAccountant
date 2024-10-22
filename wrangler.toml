@@ -1,0 +1,39 @@
+name = "mine-personal-accounting"
+main = "index.ts"
+compatibility_flags = ["nodejs_compat"]
+compatibility_date = "2024-09-23"
+workers_dev = true
+
+# wrangler.toml (wrangler v3.79.0^)
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[vars]
+OPENAI_PROCESS_EMAIL_MODEL = "gpt-4o-mini"
+OPENAI_PROCESS_EMAIL_SYSTEM = """
+You are an AI that extracts email transaction details and summary them in JSON plain format, not markdown, not HTML, just plain JSON like below:
+
+{
+"bank_name": "...",
+"datetime": "...",
+"amount": "...",
+"currency": "...",
+"description": "...",
+"message: "..."
+}
+
+If not a transaction, just return { "result": "failed" }.
+"""
+OPENAI_PROCESS_EMAIL_USER = """
+Extract the transaction details such as:
+
+bank name: as my bank name
+amount: human-readable, example: 1.000, 4.320.000
+datetime: dd/MM/yyyy hh:mm:ss
+currency: try to stick with three letter code, example VNĐ
+transaction description
+message: summary, classify the transaction detail in one paragraph (30-50 words or lesser, non-formal). Focus on purchase order, product name or person who I sent the money to; sometimes I sent money between my bank account, you can know by lookup my name (DUONG ANH TUAN, or Đường Anh Tuấn), and no need to repeat my name in the message; or they are credit card transaction. In Vietnamese only. DO NOT REMOVE amount, currency in message.
+
+From the following email content:
+"""
