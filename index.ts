@@ -47,11 +47,13 @@ function escapeMarkdownV2(text) {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 app.post('/assistant', async (c) => {
-    if(c.req.header('X-Telegram-Bot-Api-Secret-Token') != c.env.TELEGRAM_BOT_SECRET_TOKEN)
+    if (c.req.header('X-Telegram-Bot-Api-Secret-Token') != c.env.TELEGRAM_BOT_SECRET_TOKEN) {
+        console.error("🔐 Authentication failed here")
         return c.text("You are not welcome here")
+    }
 
     const body = await c.req.json()
-    console.info("🔫 Received request", body.message.text)
+    console.info("🔫 Received new request", body.message)
 
     const openai = new OpenAI({
         project: c.env.OPENAI_PROJECT_ID,
@@ -91,6 +93,8 @@ app.post('/assistant', async (c) => {
         reply_parameters: {
             message_id: body.message.message_id
         }
+    }).then(() => {
+        console.info("🏄 Send Telegram response successfully")
     })
 
     return c.text("Okay");
@@ -115,7 +119,7 @@ export default {
         const emailData = `Email date: ${emailDate}\nEmail sender: ${emailFromName}\nEmail content:\n${emailContent}`;
         const transactionDetails = await this.processEmail(emailData, env);
 
-        if(transactionDetails === false) return "Not okay";
+        if (transactionDetails === false) return "Not okay";
 
         // Handle storing and notifying separately
         await this.storeTransaction(transactionDetails, env);
@@ -188,9 +192,10 @@ export default {
             throw new Error(`Upload transaction file error: ${uploadResponse.statusText}`);
         }
 
+        console.info(`🤖 Upload ${fileName} successfully`)
+
         const uploadResult = await uploadResponse.json();
         const fileId = uploadResult.id;
-
         const vectorStoreResponse = await fetch(`https://api.openai.com/v1/vector_stores/${env.OPENAI_ASSISTANT_VECTORSTORE_ID}/files`, {
             method: 'POST',
             headers: {
@@ -206,6 +211,8 @@ export default {
             throw new Error(`Error adding file to vector store: ${vectorStoreResponse.statusText}`);
         }
 
+        console.info(`🤖 Add ${fileName} to Vector store successfully`)
+
         // Return the response from the vector store
         return vectorStoreResponse.json();
     },
@@ -219,7 +226,9 @@ export default {
         const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
 
         const humanReadableText = this.formatTransactionDetails(details);
-        await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, escapeMarkdownV2(humanReadableText), { parse_mode: "MarkdownV2" })
+        await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, escapeMarkdownV2(humanReadableText), { parse_mode: "MarkdownV2" }).then(() => {
+            console.info("🏄 Send Telegram notification successfully")
+        })
     },
 
     formatTransactionDetails(details: any) {
