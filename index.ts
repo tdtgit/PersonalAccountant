@@ -11,12 +11,13 @@ type Environment = {
     readonly OPENAI_PROJECT_ID: string;
     readonly OPENAI_API_KEY: string;
 
-    readonly OPENAI_PROCESS_EMAIL_SYSTEM: string;
-    readonly OPENAI_PROCESS_EMAIL_USER: string;
+    readonly OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT: string;
+    readonly OPENAI_PROCESS_EMAIL_USER_PROMPT: string;
     readonly OPENAI_PROCESS_EMAIL_MODEL: string;
 
     readonly OPENAI_ASSISTANT_VECTORSTORE_ID: string;
     readonly OPENAI_ASSISTANT_ID: string;
+    readonly OPENAI_ASSISTANT_EMAIL_USER_PROMPT: string;
 }
 
 const app = new Hono<{
@@ -102,6 +103,48 @@ app.post('/assistant', async (c) => {
 
 export default {
     fetch: app.fetch,
+    async scheduled(env: Environment) {
+        const openai = new OpenAI({
+            project: env.OPENAI_PROJECT_ID,
+            apiKey: env.OPENAI_API_KEY,
+        });
+    
+        let run = await openai.beta.threads.createAndRun({
+            assistant_id: env.OPENAI_ASSISTANT_ID,
+            thread: {
+                messages: [
+                    { role: "user", content: env.OPENAI_ASSISTANT_EMAIL_USER_PROMPT },
+                ],
+            },
+        });
+        console.info("🔫 Create scheduled threads and run successfully", run.thread_id)
+    
+        while (run.status === "queued" || run.status === "in_progress") {
+            // Retrieve the updated run status
+            run = await openai.beta.threads.runs.retrieve(
+                run.thread_id,
+                run.id
+            );
+            await sleep(500);
+        }
+    
+        const threadMessages = await openai.beta.threads.messages.list(
+            run.thread_id, {
+            run_id: run.id
+        });
+    
+        const msg = threadMessages.data[0].content[0].text.value.replace(/【\d+:\d+†source】/g, '')
+        console.info("🔫 Message process successfully", escapeMarkdownV2(msg))
+    
+        const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
+        await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, escapeMarkdownV2(msg), {
+            parse_mode: "MarkdownV2",
+        }).then(() => {
+            console.info("🏄 Send Telegram scheduled message successfully")
+        })
+    
+        return "Should be okay";
+    },
     async email(message, env: Environment) {
         // Parse the email using PostalMime
         const parser = new PostalMime();
@@ -140,8 +183,8 @@ export default {
 
         const completion = await openai.chat.completions.create({
             messages: [
-                { role: "system", content: env.OPENAI_PROCESS_EMAIL_SYSTEM },
-                { role: "user", content: `${env.OPENAI_PROCESS_EMAIL_USER}\n\n${emailData}` },
+                { role: "system", content: env.OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT },
+                { role: "user", content: `${env.OPENAI_PROCESS_EMAIL_USER_PROMPT}\n\n${emailData}` },
             ],
             model: env.OPENAI_PROCESS_EMAIL_MODEL,
             store: false,

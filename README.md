@@ -45,8 +45,8 @@ The application requires the following environment variables:
 | `TELEGRAM_BOT_SECRET_TOKEN`      | Secret token of the Telegram webhook (`X-Telegram-Bot-Api-Secret-Token`) | Yes      | -       |
 | `OPENAI_PROJECT_ID`              | OpenAI project identifier.                                               | Yes      | -       |
 | `OPENAI_API_KEY`                 | API key for accessing OpenAI services.                                   | Yes      | -       |
-| `OPENAI_PROCESS_EMAIL_SYSTEM`    | System message to use for email processing in OpenAI.                    | Yes      | -       |
-| `OPENAI_PROCESS_EMAIL_USER`      | User prompt template for email processing.                               | Yes      | -       |
+| `OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT`    | System message to use for email processing in OpenAI.                    | Yes      | -       |
+| `OPENAI_PROCESS_EMAIL_USER_PROMPT`      | User prompt template for email processing.                               | Yes      | -       |
 | `OPENAI_PROCESS_EMAIL_MODEL`     | The model used by OpenAI for email processing.                           | Yes      | -       |
 | `OPENAI_ASSISTANT_VECTORSTORE_ID`| The vector store identifier for storing processed data in OpenAI.        | Yes      | -       |
 | `OPENAI_ASSISTANT_ID`            | Assistant ID for OpenAI's thread execution.                              | Yes      | -       |

@@ -11,7 +11,7 @@ head_sampling_rate = 1
 
 [vars]
 OPENAI_PROCESS_EMAIL_MODEL = "gpt-4o-mini"
-OPENAI_PROCESS_EMAIL_SYSTEM = """
+OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT = """
 You are an AI that extracts email transaction details and summary them in JSON plain format, not markdown, not HTML, just plain JSON like below:
 
 {
@@ -25,7 +25,7 @@ You are an AI that extracts email transaction details and summary them in JSON p
 
 If not a transaction, just return { "result": "failed" }.
 """
-OPENAI_PROCESS_EMAIL_USER = """
+OPENAI_PROCESS_EMAIL_USER_PROMPT = """
 Extract the transaction details such as:
 
 bank name: as my bank name
@@ -37,3 +37,4 @@ message: summary, classify the transaction detail in one paragraph (30-50 words 
 
 From the following email content:
 """
+OPENAI_ASSISTANT_EMAIL_USER_PROMPT="Tổng hợp, phân loại các giao dịch được tạo trong ngày hôm nay"
