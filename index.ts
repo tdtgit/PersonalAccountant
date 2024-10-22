@@ -60,7 +60,7 @@ app.post('/assistant', async (c) => {
         project: c.env.OPENAI_PROJECT_ID,
         apiKey: c.env.OPENAI_API_KEY,
     });
-
+    
     let run = await openai.beta.threads.createAndRun({
         assistant_id: c.env.OPENAI_ASSISTANT_ID,
         thread: {
@@ -110,15 +110,16 @@ export default {
             apiKey: env.OPENAI_API_KEY,
         });
     
+        const currentDate = new Date().toLocaleDateString('en-GB');
         let run = await openai.beta.threads.createAndRun({
             assistant_id: env.OPENAI_ASSISTANT_ID,
             thread: {
                 messages: [
-                    { role: "user", content: env.OPENAI_ASSISTANT_SCHEDULED_PROMPT },
+                    { role: "user", content: `${env.OPENAI_ASSISTANT_SCHEDULED_PROMPT} ${currentDate}` },
                 ],
             },
         });
-        console.info("🔫 Create scheduled threads and run successfully", run.thread_id)
+        console.info("🔫 Create scheduled threads and run successfully", currentDate, run.thread_id)
     
         while (run.status === "queued" || run.status === "in_progress") {
             // Retrieve the updated run status
