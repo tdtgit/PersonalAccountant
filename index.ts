@@ -6,6 +6,7 @@ import { Telegraf } from 'telegraf'
 type Environment = {
     readonly TELEGRAM_CHAT_ID: string;
     readonly TELEGRAM_BOT_TOKEN: string;
+    readonly TELEGRAM_BOT_SECRET_TOKEN: string;
 
     readonly OPENAI_PROJECT_ID: string;
     readonly OPENAI_API_KEY: string;
@@ -14,7 +15,7 @@ type Environment = {
     readonly OPENAI_PROCESS_EMAIL_USER: string;
     readonly OPENAI_PROCESS_EMAIL_MODEL: string;
 
-    readonly OPENAI_ASSISTANT_VECTOR_STORE: string;
+    readonly OPENAI_ASSISTANT_VECTORSTORE_ID: string;
     readonly OPENAI_ASSISTANT_ID: string;
 }
 
@@ -46,6 +47,9 @@ function escapeMarkdownV2(text) {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 app.post('/assistant', async (c) => {
+    if(c.req.header('X-Telegram-Bot-Api-Secret-Token') != c.env.TELEGRAM_BOT_SECRET_TOKEN)
+        return c.text("You are not welcome here")
+
     const body = await c.req.json()
     console.info("🔫 Received request", body.message.text)
 
@@ -111,11 +115,13 @@ export default {
         const emailData = `Email date: ${emailDate}\nEmail sender: ${emailFromName}\nEmail content:\n${emailContent}`;
         const transactionDetails = await this.processEmail(emailData, env);
 
+        if(transactionDetails === false) return "Not okay";
+
         // Handle storing and notifying separately
         await this.storeTransaction(transactionDetails, env);
         await this.notifyServices(transactionDetails, env);
 
-        return Response.json({ result: "okay" });
+        return "Okay";
     },
 
     async processEmail(emailData: string, env: Environment) {
@@ -143,10 +149,10 @@ export default {
             transactionDetails = JSON.parse(extractedData);
             if (transactionDetails.result === "failed") {
                 console.info("📬 Not a transaction email. Notification disabled.");
-                return transactionDetails;
+                return false;
             }
         } catch (e) {
-            transactionDetails = { error: "Unable to parse transaction details" };
+            return console.error("Unable to parse transaction details");
         }
 
         return transactionDetails;
@@ -154,14 +160,9 @@ export default {
 
     async storeTransaction(details, env: Environment) {
         const fileName = `ArgusChiTieu_transaction_${new Date().toISOString()}.txt`;
-        if (details.error || details.result === "failed") {
-            console.log("Skipping storage due to error or non-transaction email.");
-            return;
-        }
 
         // Convert the details to a text format
         const transactionText = JSON.stringify(details, null, 2);
-        console.log("transactionText", transactionText)
         const formData = new FormData();
         formData.append('purpose', 'assistants');
 
@@ -189,9 +190,8 @@ export default {
 
         const uploadResult = await uploadResponse.json();
         const fileId = uploadResult.id;
-        console.log(fileId)
 
-        const vectorStoreResponse = await fetch(`https://api.openai.com/v1/vector_stores/${env.OPENAI_ASSISTANT_VECTOR_STORE}/files`, {
+        const vectorStoreResponse = await fetch(`https://api.openai.com/v1/vector_stores/${env.OPENAI_ASSISTANT_VECTORSTORE_ID}/files`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
