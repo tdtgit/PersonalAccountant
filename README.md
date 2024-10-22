@@ -1,18 +1,18 @@
-# Your personal accounting, managed by AI
+# Your personal accountant, managed by AI
 
 `You ask, AI answer.`
 
-**PersonalAccounting** centralizes receipt tracking by forwarding transaction emails from multiple accounts to one platform. It extracts key details, sends real-time notifications via Telegram, and lets users ask AI to look up receipts, generate summaries, or even provide daily financial reports, making personal accounting more efficient and automated.
+**PersonalAccountant** centralizes receipt tracking by forwarding transaction emails from multiple accounts to one platform. It extracts key details, sends real-time notifications via Telegram, and lets users ask AI to look up receipts, generate summaries, or even provide daily financial reports, making personal accountant more efficient and automated.
 
 | | | |
 |:-------------------------:|:-------------------------:|:-------------------------:|
-|<img width="100%" src="./docs/argus-personalaccounting-notification.png"> Notification |  <img width="100%" src="./docs/argus-personalaccounting-queries.png"> Queries |<img width="100%" src="./docs/argus-personalaccounting-scheduled.png"> Scheduled report |
+|<img width="100%" src="./docs/argus-personalaccountant-notification.png"> Notification |  <img width="100%" src="./docs/argus-personalaccountant-queries.png"> Queries |<img width="100%" src="./docs/argus-personalaccountant-scheduled.png"> Scheduled report |
 
 ## Application flow
 
 Transaction emails will be forwarded to a "virtual" email address managed by [Cloudflare Email Workers](https://developers.cloudflare.com/email-routing/email-workers/). These emails will then be processed by OpenAI's chat completion API to extract key information, such as the `amount`, `currency`, and `description`. After extracting the details, the workflow will:
 
-![Application flow](docs/PersonalAccounting.drawio.png)
+![Application flow](docs/PersonalAccountant.drawio.png)
 
 1. Trigger a notification (currently set to send alerts via Telegram).
 2. Upload the processed text to the [vector database store](https://platform.openai.com/storage/vector_stores) on the OpenAI platform.

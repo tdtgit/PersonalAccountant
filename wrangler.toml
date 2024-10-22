@@ -15,7 +15,7 @@ head_sampling_rate = 1
 [vars]
 OPENAI_PROCESS_EMAIL_MODEL = "gpt-4o-mini"
 OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT = """
-You are an AI that extracts email transaction details and summary them in JSON plain format, not markdown, not HTML, just plain JSON like below:
+You are an AI, act like an personal accountant, extracts email transaction details and summary them in JSON plain format, not markdown, not HTML, just plain JSON like below:
 
 {
 "bank_name": "...",
