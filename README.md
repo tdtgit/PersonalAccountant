@@ -2,15 +2,24 @@
 
 `You ask, AI answer.`
 
-![You ask, AI answer](docs/argus-chi-tieu.jpg)
+![You ask, your AI answer](docs/argus-chi-tieu.jpg)
 
-## Flow
+## Worker flow
 
-The transaction emails will be forwarded and processed by [Cloudflare Email Worker](https://developers.cloudflare.com/email-routing/email-workers/). They will by processed by OpenAI chat completion to extract the information (`amount`, `currency`, `description`,...) and then:
-* Trigger the notification (to Telegram for now)
-* Uploaded to the [vector database store](https://platform.openai.com/storage/vector_stores) of OpenAI platform.
+Transaction emails will be forwarded to a "virtual" email address managed by [Cloudflare Email Workers](https://developers.cloudflare.com/email-routing/email-workers/). These emails will then be processed by OpenAI's chat completion API to extract key information, such as the `amount`, `currency`, and `description`. After extracting the details, the workflow will:
 
-When you send the message to your Telegram bot, it will call the Cloudflare worker (using Telegram's web hook), so you can query your transactions by [OpenAI Assistant](https://platform.openai.com/assistants).
+![Application flow](docs/PersonalAccounting.drawio.png)
+
+1. Trigger a notification (currently set to send alerts via Telegram).
+2. Upload the processed text to the [vector database store](https://platform.openai.com/storage/vector_stores) on the OpenAI platform.
+
+Since the data is stored in a personal vector database, you can make queries by sending a message to your Telegram bot. The bot will then call the Cloudflare worker using a Telegram webhook. These "on-demand" requests will be processed by the [OpenAI Assistant](https://platform.openai.com/assistants).
+
+## Prerequisite
+
+* A domain hosted on Cloudflare, and don't have any email related DNS records: https://developers.cloudflare.com/email-routing/get-started/enable-email-routing/
+* A paid (tier 1 and up) OpenAI account so you can use their `gpt-4o-mini` model: https://platform.openai.com/docs/guides/rate-limits/usage-tiers
+* A Telegram bot to receive notification and send the queries: https://core.telegram.org/bots/tutorial 
 
 ## Setup
 
@@ -47,11 +56,12 @@ The application requires the following environment variables:
 | `OPENAI_API_KEY`                 | API key for accessing OpenAI services.                                   | Yes      | -       |
 | `OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT`    | System message to use for email processing in OpenAI.                    | Yes      | -       |
 | `OPENAI_PROCESS_EMAIL_USER_PROMPT`      | User prompt template for email processing.                               | Yes      | -       |
+| `OPENAI_ASSISTANT_SCHEDULED_PROMPT` | User prompt for daily transaction summary | Yes | - |
 | `OPENAI_PROCESS_EMAIL_MODEL`     | The model used by OpenAI for email processing.                           | Yes      | -       |
 | `OPENAI_ASSISTANT_VECTORSTORE_ID`| The vector store identifier for storing processed data in OpenAI.        | Yes      | -       |
 | `OPENAI_ASSISTANT_ID`            | Assistant ID for OpenAI's thread execution.                              | Yes      | -       |
 
-## Additional Information
+## Additional information
 
 - **Handling Email Data**: The application uses `PostalMime` for parsing email data and extracts relevant details for further processing.
 - **Telegram Notifications**: Messages are sent to a specified chat using the `Telegraf` library, and markdown formatting is used for message content.

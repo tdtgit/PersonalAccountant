@@ -4,6 +4,9 @@ compatibility_flags = ["nodejs_compat"]
 compatibility_date = "2024-09-23"
 workers_dev = true
 
+[triggers]
+crons = ["0 15 * * *"]
+
 # wrangler.toml (wrangler v3.79.0^)
 [observability]
 enabled = true
@@ -37,4 +40,4 @@ message: summary, classify the transaction detail in one paragraph (30-50 words 
 
 From the following email content:
 """
-OPENAI_ASSISTANT_EMAIL_USER_PROMPT="Tổng hợp, phân loại các giao dịch được tạo trong ngày hôm nay"
+OPENAI_ASSISTANT_SCHEDULED_PROMPT="Tổng hợp ngắn, phân loại các giao dịch được tạo trong ngày hôm nay"

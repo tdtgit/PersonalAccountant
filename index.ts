@@ -17,7 +17,7 @@ type Environment = {
 
     readonly OPENAI_ASSISTANT_VECTORSTORE_ID: string;
     readonly OPENAI_ASSISTANT_ID: string;
-    readonly OPENAI_ASSISTANT_EMAIL_USER_PROMPT: string;
+    readonly OPENAI_ASSISTANT_SCHEDULED_PROMPT: string;
 }
 
 const app = new Hono<{
@@ -85,7 +85,8 @@ app.post('/assistant', async (c) => {
         run_id: run.id
     });
 
-    const msg = threadMessages.data[0].content[0].text.value.replace(/【\d+:\d+†source】/g, '')
+    const msg = `🥳 Báo cáo cuối ngày tới rồi đêi\n\n${threadMessages.data[0].content[0].text.value.replace(/【\d+:\d+†source】/g, '')}\n-------------------`;
+
     console.info("🔫 Message process successfully", escapeMarkdownV2(msg))
 
     const bot = new Telegraf(c.env.TELEGRAM_BOT_TOKEN);
@@ -113,7 +114,7 @@ export default {
             assistant_id: env.OPENAI_ASSISTANT_ID,
             thread: {
                 messages: [
-                    { role: "user", content: env.OPENAI_ASSISTANT_EMAIL_USER_PROMPT },
+                    { role: "user", content: env.OPENAI_ASSISTANT_SCHEDULED_PROMPT },
                 ],
             },
         });
