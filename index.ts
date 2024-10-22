@@ -99,6 +99,7 @@ export default {
         const parser = new PostalMime();
         const body = await new Response(message.raw).arrayBuffer();
         const email = await parser.parse(body);
+        console.info("📬 New mail arrived", email.text)
 
         const emailContent = email.text || email.html;
         if (!emailContent) {
@@ -141,7 +142,7 @@ export default {
         try {
             transactionDetails = JSON.parse(extractedData);
             if (transactionDetails.result === "failed") {
-                console.log("Not a transaction email. Notification disabled.");
+                console.info("📬 Not a transaction email. Notification disabled.");
                 return transactionDetails;
             }
         } catch (e) {
