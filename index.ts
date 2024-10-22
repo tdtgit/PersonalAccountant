@@ -115,7 +115,7 @@ export default {
             assistant_id: env.OPENAI_ASSISTANT_ID,
             thread: {
                 messages: [
-                    { role: "user", content: `${env.OPENAI_ASSISTANT_SCHEDULED_PROMPT} ${currentDate}` },
+                    { role: "user", content: env.OPENAI_ASSISTANT_SCHEDULED_PROMPT.replace("%DATETIME%", currentDate) },
                 ],
             },
         });

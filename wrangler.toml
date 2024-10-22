@@ -40,4 +40,4 @@ message: summary, classify the transaction detail in one paragraph (30-50 words 
 
 From the following email content:
 """
-OPENAI_ASSISTANT_SCHEDULED_PROMPT="Tổng hợp ngắn, phân loại các giao dịch được tạo trong ngày hôm nay"
+OPENAI_ASSISTANT_SCHEDULED_PROMPT="Tổng hợp ngắn, phân loại các giao dịch được tạo trong ngày hôm nay %DATETIME%"
