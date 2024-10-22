@@ -6,7 +6,7 @@
 
 ![You ask, your AI answer](docs/argus-chi-tieu.jpg)
 
-## Worker flow
+## Application flow
 
 Transaction emails will be forwarded to a "virtual" email address managed by [Cloudflare Email Workers](https://developers.cloudflare.com/email-routing/email-workers/). These emails will then be processed by OpenAI's chat completion API to extract key information, such as the `amount`, `currency`, and `description`. After extracting the details, the workflow will:
 
@@ -62,6 +62,10 @@ The application requires the following environment variables:
 | `OPENAI_PROCESS_EMAIL_MODEL`     | The model used by OpenAI for email processing.                           | Yes      | -       |
 | `OPENAI_ASSISTANT_VECTORSTORE_ID`| The vector store identifier for storing processed data in OpenAI.        | Yes      | -       |
 | `OPENAI_ASSISTANT_ID`            | Assistant ID for OpenAI's thread execution.                              | Yes      | -       |
+
+## TODO
+- [ ] Whitelist email addresses.
+- [ ] Notify to channel, group chat instead
 
 ## Additional information
 
