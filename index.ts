@@ -1,7 +1,7 @@
-import { Hono } from 'hono'
-import PostalMime from 'postal-mime'
-import OpenAI from 'openai'
-import { Telegraf } from 'telegraf'
+import { Hono } from 'hono';
+import PostalMime from 'postal-mime';
+import OpenAI from 'openai';
+import { Telegraf } from 'telegraf';
 
 type Environment = {
     readonly TELEGRAM_CHAT_ID: string;
@@ -18,181 +18,159 @@ type Environment = {
     readonly OPENAI_ASSISTANT_VECTORSTORE_ID: string;
     readonly OPENAI_ASSISTANT_ID: string;
     readonly OPENAI_ASSISTANT_SCHEDULED_PROMPT: string;
-}
+};
 
-const app = new Hono<{
-    Bindings: Environment
-}>()
+const app = new Hono<{ Bindings: Environment }>();
 
-function normalize(text) {
-    return text
-        // Escape MarkdownV2
-        .replace(/_/g, '\\_')
-        .replace(/\[/g, '\\[')
-        .replace(/\]/g, '\\]')
-        .replace(/\(/g, '\\(')
-        .replace(/\)/g, '\\)')
-        .replace(/~/g, '\\~')
-        .replace(/`/g, '\\`')
-        .replace(/>/g, '\\>')
-        .replace(/#/g, '\\#')
-        .replace(/\+/g, '\\+')
-        .replace(/-/g, '\\-')
-        .replace(/=/g, '\\=')
-        .replace(/\|/g, '\\|')
-        .replace(/\{/g, '\\{')
-        .replace(/\}/g, '\\}')
-        .replace(/\./g, '\\.')
-        .replace(/!/g, '\\!')
-        // Remove citation
-        .replace(/【\d+:\d+†source】/g, '');
-}
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const normalize = (text: string) =>
+    text.replace(/[_\[\]~`>#\+\-=|{}.!]/g, '\\$&').replace(/【\d+:\d+†source】/g, '');
 
-function formatTransactionDetails(details: any) {
-    if (details.error) {
-        return `Transaction error: ${details.error}`;
+const formatTransactionDetails = (details: any) =>
+    details.error
+        ? `Transaction error: ${details.error}`
+        : `💳 *Có giao dịch thẻ mới nè*\n\n${details.message}\n\n*Từ:* ${details.bank_name || "N/A"}\n*Ngày:* ${details.datetime || "N/A"}\n------------------`;
+
+const createOpenAIClient = (env: Environment) => new OpenAI({ project: env.OPENAI_PROJECT_ID, apiKey: env.OPENAI_API_KEY, });
+
+const sendTelegramMessage = async (bot: Telegraf, chatId: string, message: string, options = {}) =>
+    bot.telegram.sendMessage(chatId, normalize(message), { parse_mode: "MarkdownV2", ...options });
+
+const waitForCompletion = async (openai: OpenAI, threadId: string, runId: string) => {
+    let run = await openai.beta.threads.runs.retrieve(threadId, runId);
+    while (["queued", "in_progress"].includes(run.status)) {
+        console.info("⏳ Waiting for thread completion:", threadId);
+        await sleep(500);
+        run = await openai.beta.threads.runs.retrieve(threadId, runId);
     }
+    return run;
+};
 
-    return `💳 *Có giao dịch thẻ mới nè*\n\n${details.message}\n\n*Từ:* ${details.bank_name || "N/A"}\n*Ngày:* ${details.datetime || "N/A"}\n------------------`;
-}
+const formatDateForReport = (reportType: 'ngày' | 'tuần' | 'tháng') => {
+    const currentDate = new Date();
+    switch (reportType) {
+        case 'ngày':
+            return currentDate.toLocaleDateString('vi-VN', { timeZone: "Asia/Bangkok" });
+        case 'tuần':
+            const currentSunday = new Date(currentDate.setDate(currentDate.getDate() - currentDate.getDay()));
+            const lastMonday = new Date(currentSunday);
+            lastMonday.setDate(currentSunday.getDate() - 6);
+            const formattedMonday = lastMonday.toLocaleDateString('vi-VN', { timeZone: "Asia/Bangkok" });
+            const formattedSunday = currentSunday.toLocaleDateString('vi-VN', { timeZone: "Asia/Bangkok" });
+            return ` từ ${formattedMonday} đến ${formattedSunday}`;
+        case 'tháng':
+            return `${currentDate.getMonth() + 1}/${currentDate.getFullYear()}`;
+    }
+};
+
+const createAndProcessScheduledReport = async (env: Environment, reportType: 'ngày' | 'tuần' | 'tháng') => {
+    const openai = createOpenAIClient(env);
+    const prompt = env.OPENAI_ASSISTANT_SCHEDULED_PROMPT.replace("%DATETIME%", formatDateForReport(reportType));
+    console.info(`⏰ Processing report for prompt ${prompt}`)
+
+    const run = await openai.beta.threads.createAndRun({
+        assistant_id: env.OPENAI_ASSISTANT_ID,
+        thread: { messages: [{ role: "user", content: prompt }] },
+    });
+
+    console.info(`⏰ ${reportType.charAt(0).toUpperCase() + reportType.slice(1)} report thread created:`, run.thread_id);
+    await waitForCompletion(openai, run.thread_id, run.id);
+
+    const { data: threadMessages } = await openai.beta.threads.messages.list(run.thread_id, { run_id: run.id });
+    console.info(`⏰ ${reportType.charAt(0).toUpperCase() + reportType.slice(1)} message processed:`, threadMessages);
+
+    const msgContent = threadMessages[0]?.content[0]?.text?.value;
+    const msg = `🥳 Báo cáo ${reportType} tới rồi đêi\n\n${msgContent}\n------------------`;
+    const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
+    await sendTelegramMessage(bot, env.TELEGRAM_CHAT_ID, msg);
+
+    console.info(`⏰ ${reportType.charAt(0).toUpperCase() + reportType.slice(1)} message sent successfully`);
+    return "⏰ Scheduled process completed";
+};
 
 app.post('/assistant', async (c) => {
-    if (c.req.header('X-Telegram-Bot-Api-Secret-Token') != c.env.TELEGRAM_BOT_SECRET_TOKEN) {
-        console.error("🔐 Authentication failed here")
-        return c.text("🔐 You are not welcome here")
+    if (c.req.header('X-Telegram-Bot-Api-Secret-Token') !== c.env.TELEGRAM_BOT_SECRET_TOKEN) {
+        console.error("Authentication failed. You are not welcome here");
+        return;
     }
 
-    const body = await c.req.json()
-    console.info("🔫 Received new assistant request:", body.message.text)
+    const { message } = await c.req.json();
+    const { text } = message;
+    console.info("🔫 Received new assistant request:", text);
 
-    const openai = new OpenAI({
-        project: c.env.OPENAI_PROJECT_ID,
-        apiKey: c.env.OPENAI_API_KEY,
-    });
-
-    let run = await openai.beta.threads.createAndRun({
+    const openai = createOpenAIClient(c.env);
+    const run = await openai.beta.threads.createAndRun({
         assistant_id: c.env.OPENAI_ASSISTANT_ID,
-        thread: {
-            messages: [
-                { role: "user", content: body.message.text },
-            ],
-        },
-    });
-    console.info("🔫 Create thread and run successfully:", run.thread_id)
-
-    while (run.status === "queued" || run.status === "in_progress") {
-        // Retrieve the updated run status
-        run = await openai.beta.threads.runs.retrieve(
-            run.thread_id,
-            run.id
-        );
-        console.info("🔫 Waiting thread to completed", run.thread_id)
-        await sleep(500);
-    }
-
-    const threadMessages = await openai.beta.threads.messages.list(
-        run.thread_id, {
-        run_id: run.id
+        thread: { messages: [{ role: "user", content: text }] },
     });
 
-    const msg = normalize(threadMessages.data[0].content[0].text.value);
-    console.info("🔫 Message process successfully:", msg)
+    console.info("🔫 Thread created successfully:", run.thread_id);
+    await waitForCompletion(openai, run.thread_id, run.id);
 
+    const { data: threadMessages } = await openai.beta.threads.messages.list(run.thread_id, { run_id: run.id });
+    console.info("🔫 Message processed successfully:", threadMessages);
+
+    const msg = threadMessages[0]?.content[0]?.text?.value;
     const bot = new Telegraf(c.env.TELEGRAM_BOT_TOKEN);
-    await bot.telegram.sendMessage(c.env.TELEGRAM_CHAT_ID, msg, {
-        parse_mode: "MarkdownV2",
-        reply_parameters: {
-            message_id: body.message.message_id
-        }
-    }).then(() => {
-        console.info("🔫 Send Telegram response successfully")
-    })
+    await sendTelegramMessage(bot, c.env.TELEGRAM_CHAT_ID, msg, { reply_to_message_id: message.message_id });
 
-    return c.text("🔫 Okay");
-})
+    console.info("🔫 Telegram response sent successfully");
+    return c.text("Request completed");
+});
 
 export default {
     fetch: app.fetch,
+
+    async dailyReport(env: Environment) {
+        return createAndProcessScheduledReport(env, 'ngày');
+    },
+
+    async weeklyReport(env: Environment) {
+        return createAndProcessScheduledReport(env, 'tuần');
+    },
+
+    async monthlyReport(env: Environment) {
+        return createAndProcessScheduledReport(env, 'tháng');
+    },
+
     async scheduled(event, env: Environment) {
-        console.info("⏰ Scheduler is triggered");
-        const openai = new OpenAI({
-            project: env.OPENAI_PROJECT_ID,
-            apiKey: env.OPENAI_API_KEY,
-        });
-
-        const currentDate = new Date().toLocaleDateString('vi-VN', { timeZone: "Asia/Bangkok" });
-        let run = await openai.beta.threads.createAndRun({
-            assistant_id: env.OPENAI_ASSISTANT_ID,
-            thread: {
-                messages: [
-                    { role: "user", content: env.OPENAI_ASSISTANT_SCHEDULED_PROMPT.replace("%DATETIME%", currentDate) },
-                ],
-            },
-        });
-        console.info("⏰ Create scheduled thread and run successfully:", currentDate, run.thread_id);
-
-        while (run.status === "queued" || run.status === "in_progress") {
-            // Retrieve the updated run status
-            run = await openai.beta.threads.runs.retrieve(
-                run.thread_id,
-                run.id
-            );
-            console.info("⏰ Waiting thread to completed", run.thread_id)
-            await sleep(500);
+        switch (event.cron) {
+            case "0 15 * * *":
+                console.info("⏰ Daily scheduler triggered");
+                await this.dailyReport(env);
+                break;
+            case "58 16 * * 0":
+                console.info("⏰ Weekly scheduler triggered");
+                await this.weeklyReport(env);
+                break;
+            case "0 15 1 * *":
+                console.info("⏰ Monthly scheduler triggered");
+                await this.monthlyReport(env);
+                break;
         }
-
-        const threadMessages = await openai.beta.threads.messages.list(
-            run.thread_id, {
-            run_id: run.id
-        });
-
-        const msg = normalize(`🥳 Báo cáo cuối ngày tới rồi đêi\n\n${threadMessages.data[0].content[0].text.value}\n------------------`)
-        console.info("⏰ Message process successfully:", msg)
-
-        const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
-        await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, msg, { parse_mode: "MarkdownV2" }).then(() => {
-            console.info("⏰ Send Telegram scheduled message successfully")
-        })
-
-        return "⏰ Should be okay";
     },
 
     async email(message, env: Environment) {
-        // Parse the email using PostalMime
         const parser = new PostalMime();
         const body = await new Response(message.raw).arrayBuffer();
         const email = await parser.parse(body);
-        console.info("📬 New mail arrived:", email.text)
+        console.info(`📬 New mail arrived! Sender ${email.from.address} (${email.from.address}), subject: ${email.subject}`);
 
         const emailContent = email.text || email.html;
-        if (!emailContent) {
-            throw new Error("📬 Email content is empty");
-        }
+        if (!emailContent) throw new Error("📬 Email content is empty");
 
-        const emailDate = email.date;
-        const emailFromName = email.from.name;
-        const emailData = `Email date: ${emailDate}\nEmail sender: ${emailFromName}\nEmail content:\n${emailContent}`;
+        const emailData = `Email date: ${email.date}\nEmail sender: ${email.from.name}\nEmail content:\n${emailContent}`;
         const transactionDetails = await this.processEmail(emailData, env);
 
-        if (transactionDetails === false) return "Not okay";
+        if (!transactionDetails) return "Not okay";
 
-        // Handle storing and notifying separately
-        await Promise.all([
-            this.storeTransaction(transactionDetails, env),
-            this.notifyServices(transactionDetails, env)
-        ]);
-
-        return "Okay";
+        await Promise.all([this.storeTransaction(transactionDetails, env), this.notifyServices(transactionDetails, env)]);
+        return "📬 Email processed successfully";
     },
 
     async processEmail(emailData: string, env: Environment) {
-        const openai = new OpenAI({
-            project: env.OPENAI_PROJECT_ID,
-            apiKey: env.OPENAI_API_KEY,
-        });
-
+        const openai = createOpenAIClient(env);
         const completion = await openai.chat.completions.create({
             messages: [
                 { role: "system", content: env.OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT },
@@ -202,23 +180,26 @@ export default {
             store: false,
         });
 
-        const extractedData = completion.choices[0]?.message?.content?.replaceAll('`', '');
-        let transactionDetails;
         try {
-            transactionDetails = JSON.parse(extractedData);
-            if (transactionDetails.result === "failed") {
-                console.warn("📬 Not a transaction email. Notification disabled.");
+            const content = JSON.parse(completion.choices[0]?.message?.content?.replaceAll('`', '') || '');
+            if (content.result === "failed") {
+                console.warn("🤖 Not a transaction email");
                 return false;
             }
-        } catch (e) {
-            return console.error("📬 Unable to parse transaction details");
-        }
 
-        return transactionDetails;
+            console.info(`🤖 Processed email content: ${JSON.stringify(content)}`);
+            return content;
+        } catch {
+            console.error("🤖 Failed to parse transaction details");
+            return false;
+        }
     },
 
     async storeTransaction(details, env: Environment) {
         const fileName = `ArgusChiTieu_transaction_${new Date().toISOString()}.txt`;
+
+        // Seems Cloudflare not allow Workers to write temporary files so
+        // we use HTTP API instead of client library.
 
         // Convert the details to a text format
         const transactionText = JSON.stringify(details, null, 2);
@@ -244,7 +225,7 @@ export default {
 
         // Check if the response is okay
         if (!uploadResponse.ok) {
-            throw new Error(`🤖 Upload transaction file error: ${uploadResponse.statusText}`);
+            throw new Error(`Upload transaction file error: ${uploadResponse.statusText}`);
         }
 
         console.info(`🤖 Upload ${fileName} successfully`)
@@ -263,27 +244,22 @@ export default {
 
         // Check if the response for adding to vector store is okay
         if (!vectorStoreResponse.ok) {
-            throw new Error(`🤖 Error adding file to vector store: ${vectorStoreResponse.statusText}`);
+            throw new Error(`Error adding file to vector store: ${vectorStoreResponse.statusText}`);
         }
 
         console.info(`🤖 Add ${fileName} to Vector store successfully`)
 
-        return;
+        // Return the response from the vector store
+        return vectorStoreResponse.json();
     },
 
     async notifyServices(details: any, env: Environment) {
-        await Promise.all([
-            this.sendTelegramNotification(details, env)
-        ]);
-        // Future services (e.g., SMS) can be added here
+        await this.sendTelegramNotification(details, env);
     },
 
     async sendTelegramNotification(details: any, env: Environment) {
         const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
-
-        const msg = formatTransactionDetails(details);
-        await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, normalize(msg), { parse_mode: "MarkdownV2" }).then(() => {
-            console.info("🏄 Send Telegram notification successfully")
-        })
+        const message = formatTransactionDetails(details);
+        await sendTelegramMessage(bot, env.TELEGRAM_CHAT_ID, message);
     },
-}
+};

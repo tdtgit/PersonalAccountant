@@ -4,6 +4,9 @@
 
 **PersonalAccountant** centralizes receipt tracking by forwarding transaction emails from multiple accounts to one platform. It extracts key details, sends real-time notifications via Telegram, and lets users ask AI to look up receipts, generate summaries, or even provide daily financial reports, making personal accountant more efficient and automated.
 
+*Disclaimer*:
+The whole project is written and optimized by ChatGPT. Feel free to create issue if any and I will ask them to resolve it.
+
 | | | |
 |:-------------------------:|:-------------------------:|:-------------------------:|
 |<img width="100%" src="./docs/argus-personalaccountant-notification.png"> Notification |  <img width="100%" src="./docs/argus-personalaccountant-queries.png"> Queries |<img width="100%" src="./docs/argus-personalaccountant-scheduled.png"> Scheduled report |
