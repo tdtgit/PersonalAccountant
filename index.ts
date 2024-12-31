@@ -27,6 +27,16 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const normalize = (text: string) =>
     text.replace(/[_\[\]~`>#\+\-=|{}.!]/g, '\\$&').replace(/【\d+:\d+†source】/g, '');
 
+/**
+ * Formats transaction details into a readable string for Telegram notification.
+ * 
+ * @param {object} details - The transaction details.
+ * @param {string} [details.error] - Error message if there's an error.
+ * @param {string} details.message - Transaction message.
+ * @param {string} [details.bank_name="N/A"] - Name of the bank.
+ * @param {string} [details.datetime="N/A"] - Datetime of the transaction.
+ * @returns {string} Formatted string with transaction details or error message.
+ */
 const formatTransactionDetails = (details: any) =>
     details.error
         ? `Transaction error: ${details.error}`
@@ -34,9 +44,28 @@ const formatTransactionDetails = (details: any) =>
 
 const createOpenAIClient = (env: Environment) => new OpenAI({ project: env.OPENAI_PROJECT_ID, apiKey: env.OPENAI_API_KEY, });
 
+/**
+ * Sends a Telegram message with the provided message and options.
+ *
+ * The message is normalized before sending (special characters are escaped and any "source" markers are removed).
+ *
+ * @param {Telegraf} bot - The Telegram bot instance.
+ * @param {string} chatId - The chat ID to send the message to.
+ * @param {string} message - The message to send.
+ * @param {object} [options={}] - Additional options for the message (e.g. reply_to_message_id).
+ * @returns {Promise<void>}
+ */
 const sendTelegramMessage = async (bot: Telegraf, chatId: string, message: string, options = {}) =>
     bot.telegram.sendMessage(chatId, normalize(message), { parse_mode: "MarkdownV2", ...options });
 
+/**
+ * Waits for an OpenAI thread to complete.
+ *
+ * @param {OpenAI} openai - The OpenAI client instance
+ * @param {string} threadId - The ID of the thread to wait for
+ * @param {string} runId - The ID of the run to wait for
+ * @returns {Promise<import("openai").ThreadRun>} The completed thread run
+ */
 const waitForCompletion = async (openai: OpenAI, threadId: string, runId: string) => {
     let run = await openai.beta.threads.runs.retrieve(threadId, runId);
     while (["queued", "in_progress"].includes(run.status)) {
@@ -47,6 +76,17 @@ const waitForCompletion = async (openai: OpenAI, threadId: string, runId: string
     return run;
 };
 
+/**
+ * Formats a date for a report.
+ *
+ * @param {('ngày' | 'tuần' | 'tháng')} reportType - The type of report to format the date for.
+ * @returns {string} The formatted date string.
+ *
+ * The date format varies depending on the report type:
+ * - For "ngày", the date is returned in the format "YYYY-MM-DD".
+ * - For "tuần", the date range is returned in the format "YYYY-MM-DD đến YYYY-MM-DD".
+ * - For "tháng", the date is returned in the format "MM/YYYY".
+ */
 const formatDateForReport = (reportType: 'ngày' | 'tuần' | 'tháng') => {
     const currentDate = new Date();
     switch (reportType) {
@@ -64,6 +104,14 @@ const formatDateForReport = (reportType: 'ngày' | 'tuần' | 'tháng') => {
     }
 };
 
+/**
+ * Creates a new thread with the given prompt and waits for its completion.
+ * When the thread is completed, it sends a Telegram message with the content of the first message in the thread.
+ *
+ * @param {Environment} env - The environment variables.
+ * @param {'ngày' | 'tuần' | 'tháng'} reportType - The type of report to process.
+ * @returns {Promise<string>} A promise that resolves to a message indicating that the scheduled process has completed.
+ */
 const createAndProcessScheduledReport = async (env: Environment, reportType: 'ngày' | 'tuần' | 'tháng') => {
     const openai = createOpenAIClient(env);
     const prompt = env.OPENAI_ASSISTANT_SCHEDULED_PROMPT.replace("%DATETIME%", formatDateForReport(reportType));
@@ -89,20 +137,27 @@ const createAndProcessScheduledReport = async (env: Environment, reportType: 'ng
     return "⏰ Scheduled process completed";
 };
 
-app.post('/assistant', async (c) => {
+app.post('/assistant', async (c) => {    
     if (c.req.header('X-Telegram-Bot-Api-Secret-Token') !== c.env.TELEGRAM_BOT_SECRET_TOKEN) {
         console.error("Authentication failed. You are not welcome here");
-        return;
+        return c.text("Unauthorized", 401);
+    }
+    
+    const { message } = await c.req.json();
+    const bot = new Telegraf(c.env.TELEGRAM_BOT_TOKEN);
+    
+    if (message.from.id != c.env.TELEGRAM_CHAT_ID) {
+        console.warn("⚠️ Received new assistant request from unknown chat:", await c.req.json());
+        await sendTelegramMessage(bot, message.chat.id, "Bạn là người dùng không xác định, bạn không phải anh Ảgú");
+        return c.text("Unauthorized user");
     }
 
-    const { message } = await c.req.json();
-    const { text } = message;
-    console.info("🔫 Received new assistant request:", text);
+    console.info("🔫 Received new assistant request:", message.text);
 
     const openai = createOpenAIClient(c.env);
     const run = await openai.beta.threads.createAndRun({
         assistant_id: c.env.OPENAI_ASSISTANT_ID,
-        thread: { messages: [{ role: "user", content: text }] },
+        thread: { messages: [{ role: "user", content: message.text }] },
     });
 
     console.info("🔫 Thread created successfully:", run.thread_id);
@@ -112,7 +167,6 @@ app.post('/assistant', async (c) => {
     console.info("🔫 Message processed successfully:", threadMessages);
 
     const msg = threadMessages[0]?.content[0]?.text?.value;
-    const bot = new Telegraf(c.env.TELEGRAM_BOT_TOKEN);
     await sendTelegramMessage(bot, c.env.TELEGRAM_CHAT_ID, msg, { reply_to_message_id: message.message_id });
 
     console.info("🔫 Telegram response sent successfully");
@@ -122,18 +176,45 @@ app.post('/assistant', async (c) => {
 export default {
     fetch: app.fetch,
 
+    /**
+     * Generate a daily report of the transactions.
+     *
+     * This function will be called by Cloudflare at the specified cron time.
+     * The `env` argument is an object that contains the environment variables.
+     */
     async dailyReport(env: Environment) {
         return createAndProcessScheduledReport(env, 'ngày');
     },
 
+    /**
+     * Generate a weekly report of the transactions.
+     *
+     * This function will be called by Cloudflare at the specified cron time.
+     * The `env` argument is an object that contains the environment variables.
+     */
     async weeklyReport(env: Environment) {
         return createAndProcessScheduledReport(env, 'tuần');
     },
 
+    /**
+     * Generate a monthly report of the transactions.
+     *
+     * This function will be called by Cloudflare at the specified cron time.
+     * The `env` argument is an object that contains the environment variables.
+     */
     async monthlyReport(env: Environment) {
         return createAndProcessScheduledReport(env, 'tháng');
     },
 
+    /**
+     * This function is a Cloudflare scheduled worker.
+     *
+     * It will be called by Cloudflare at the specified cron time.
+     * The `event` argument is an object that contains information about the scheduled task,
+     * and the `env` argument is an object that contains the environment variables.
+     *
+     * Depending on the cron time, it will call either the `dailyReport`, `weeklyReport`, or `monthlyReport` function.
+     */
     async scheduled(event, env: Environment) {
         switch (event.cron) {
             case "0 15 * * *":
@@ -151,6 +232,19 @@ export default {
         }
     },
 
+    /**
+     * Process an incoming email.
+     *
+     * This function is a Cloudflare Email Worker.
+     * The `message` argument is an object that contains the email data,
+     * and the `env` argument is an object that contains the environment variables.
+     *
+     * This function will try to parse the email content and extract information from it.
+     * If the content is not a transaction email, it will return "Not okay".
+     * If it is a transaction email, it will store the transaction details in the vector store
+     * and notify the telegram bot.
+     * The function will return "Email processed successfully" if everything is okay.
+     */
     async email(message, env: Environment) {
         const parser = new PostalMime();
         const body = await new Response(message.raw).arrayBuffer();
@@ -169,6 +263,17 @@ export default {
         return "📬 Email processed successfully";
     },
 
+    /**
+     * Process an email using OpenAI's chat completion API.
+     *
+     * Given an email data, it will call OpenAI's chat completion API with the email data and the configured system/user prompts.
+     * The response will be parsed as JSON and returned.
+     * If the response is not a transaction email, `false` will be returned.
+     * If the response is a transaction email, the transaction details will be returned as an object.
+     * @param {string} emailData - The email data
+     * @param {Environment} env - The environment variables
+     * @returns {false | { result: string, datetime: string, message: string, amount: number, currency: string, bank_name: string, bank_icon: string }}
+     */
     async processEmail(emailData: string, env: Environment) {
         const openai = createOpenAIClient(env);
         const completion = await openai.chat.completions.create({
@@ -180,21 +285,30 @@ export default {
             store: false,
         });
 
-        try {
-            const content = JSON.parse(completion.choices[0]?.message?.content?.replaceAll('`', '') || '');
-            if (content.result === "failed") {
-                console.warn("🤖 Not a transaction email");
-                return false;
-            }
-
-            console.info(`🤖 Processed email content: ${JSON.stringify(content)}`);
-            return content;
-        } catch {
+        const contentStr = completion.choices[0]?.message?.content?.replaceAll('`', '');
+        if (!contentStr) {
             console.error("🤖 Failed to parse transaction details");
-            return false;
+            return;
         }
+
+        const content = JSON.parse(contentStr);
+        if (content.result === "failed") {
+            console.warn("🤖 Not a transaction email");
+            return;
+        }
+
+        console.info(`🤖 Processed email content: ${JSON.stringify(content)}`);
+        return content;
     },
 
+    /**
+     * Store a transaction in OpenAI's vector store.
+     * @param {false | { result: string, datetime: string, message: string, amount: number, currency: string, bank_name: string, bank_icon: string }} details - The transaction details
+     * @param {Environment} env - The environment variables
+     * @returns {Promise<void>}
+     * Resolves when the transaction is stored successfully.
+     * Rejects if any error occurs during the process.
+     */
     async storeTransaction(details, env: Environment) {
         const fileName = `ArgusChiTieu_transaction_${new Date().toISOString()}.txt`;
 
@@ -248,15 +362,28 @@ export default {
         }
 
         console.info(`🤖 Add ${fileName} to Vector store successfully`)
-
-        // Return the response from the vector store
-        return vectorStoreResponse.json();
     },
 
+    /**
+     * Notify all services of a new transaction.
+     *
+     * Currently only notifies Telegram.
+     *
+     * @param {object} details - The transaction details
+     * @param {object} env - The environment variables
+     * @returns {Promise<void>}
+     */
     async notifyServices(details: any, env: Environment) {
         await this.sendTelegramNotification(details, env);
     },
 
+    /**
+     * Sends a Telegram notification with the transaction details.
+     *
+     * @param {object} details - The transaction details
+     * @param {object} env - The environment variables
+     * @returns {Promise<void>}
+     */
     async sendTelegramNotification(details: any, env: Environment) {
         const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
         const message = formatTransactionDetails(details);
