@@ -1,0 +1,26 @@
+name: "Check PR Description for Required Keywords"
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+    branches:
+      - main
+
+jobs:
+  check-description:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "Check PR description for required keywords"
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          echo "Checking PR description for required keywords..."
+          if [[ ! "$PR_BODY" =~ (JIRA|Hotfix|Improvement|Added) ]]; then
+            echo "ERROR: Pull request description must contain one of the following words: 'JIRA', 'Hotfix', 'Improvement', 'Added'."
+            exit 1
+          fi
+          echo "PR description contains a required keyword."
