@@ -19,8 +19,8 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           echo "Checking PR description for required keywords..."
-          if [[ ! "$PR_BODY" =~ (JIRA|Hotfix|Improvement|Added) ]]; then
-            echo "ERROR: Pull request description must contain one of the following words: 'JIRA', 'Hotfix', 'Improvement', 'Added'."
+          if [[ ! "$PR_BODY" =~ (Hotfix|Improvement|Added) ]]; then
+            echo "ERROR: Pull request description must contain one of the following words: 'Hotfix', 'Improvement', 'Added'."
             exit 1
           fi
           echo "PR description contains a required keyword."
