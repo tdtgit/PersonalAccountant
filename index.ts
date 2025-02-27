@@ -68,9 +68,9 @@ const sendTelegramMessage = async (bot: Telegraf, chatId: string, message: strin
     bot.telegram.sendMessage(chatId, normalize(message), { parse_mode: "MarkdownV2", ...options });
 
 /**
- * Waits for an OpenAI thread to complete.
+ * Waits for an AI provider thread to complete.
  *
- * @param {OpenAI} openai - The OpenAI client instance
+ * @param {OpenAI} openai - The AI provider client instance
  * @param {string} threadId - The ID of the thread to wait for
  * @param {string} runId - The ID of the run to wait for
  * @returns {Promise<import("openai").ThreadRun>} The completed thread run
@@ -275,9 +275,9 @@ export default {
     },
 
     /**
-     * Process an email using OpenAI's chat completion API.
+     * Process an email using AI provider's chat completion API.
      *
-     * Given an email data, it will call OpenAI's chat completion API with the email data and the configured system/user prompts.
+     * Given an email data, it will call AI provider's chat completion API with the email data and the configured system/user prompts.
      * The response will be parsed as JSON and returned.
      * If the response is not a transaction email, `false` will be returned.
      * If the response is a transaction email, the transaction details will be returned as an object.
@@ -313,7 +313,7 @@ export default {
     },
 
     /**
-     * Store a transaction in OpenAI's vector store.
+     * Store a transaction in AI provider's vector store.
      * @param {false | { result: string, datetime: string, message: string, amount: number, currency: string, bank_name: string, bank_icon: string }} details - The transaction details
      * @param {Environment} env - The environment variables
      * @returns {Promise<void>}
