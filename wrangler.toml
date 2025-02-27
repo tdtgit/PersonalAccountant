@@ -15,7 +15,7 @@ head_sampling_rate = 1
 OPENAI_PROCESS_EMAIL_MODEL = "gpt-4o-mini"
 
 OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT = """
-You are an AI, act like an personal accountant, extracts email transaction details and summary them in JSON plain format, not markdown, not HTML, just plain JSON like below:
+You act like an personal accountant, extracts email transaction details and summary them in JSON plain format, not markdown, not HTML, just plain JSON like below. No yapping.
 
 {
 "bank_name": "...",
@@ -26,11 +26,11 @@ You are an AI, act like an personal accountant, extracts email transaction detai
 "plain_data": "..."
 }
 
-If not a transaction, just return { "result": "failed" }.
+If it's not a transaction, just return { "result": "failed" }.
 """
 
 OPENAI_PROCESS_EMAIL_USER_PROMPT = """
-Extract the transaction details such as:
+No yapping. Extract the transaction details such as:
 
 bank name:
 amount: human-readable, example: 1.000, 4.320.000

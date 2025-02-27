@@ -8,6 +8,8 @@ type Environment = {
     readonly TELEGRAM_BOT_TOKEN: string;
     readonly TELEGRAM_BOT_SECRET_TOKEN: string;
 
+    readonly AI_API_GATEWAY: string;
+
     readonly OPENAI_PROJECT_ID: string;
     readonly OPENAI_API_KEY: string;
 
@@ -42,7 +44,14 @@ const formatTransactionDetails = (details: any) =>
         ? `Transaction error: ${details.error}`
         : `💳 *Có giao dịch thẻ mới nè*\n\n${details.message}\n\n*Từ:* ${details.bank_name || "N/A"}\n*Ngày:* ${details.datetime || "N/A"}\n------------------`;
 
-const createOpenAIClient = (env: Environment) => new OpenAI({ project: env.OPENAI_PROJECT_ID, apiKey: env.OPENAI_API_KEY, });
+const createOpenAIClient = (env: Environment) => new OpenAI({
+    project: env.OPENAI_PROJECT_ID,
+    apiKey: env.OPENAI_API_KEY,
+
+    // Your AI gateway, example:
+    // https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
+    baseURL: env.AI_API_GATEWAY || "https://api.openai.com/v1",
+});
 
 /**
  * Sends a Telegram message with the provided message and options.
@@ -67,12 +76,14 @@ const sendTelegramMessage = async (bot: Telegraf, chatId: string, message: strin
  * @returns {Promise<import("openai").ThreadRun>} The completed thread run
  */
 const waitForCompletion = async (openai: OpenAI, threadId: string, runId: string) => {
-    let run = await openai.beta.threads.runs.retrieve(threadId, runId);
-    while (["queued", "in_progress"].includes(run.status)) {
-        console.info("⏳ Waiting for thread completion:", threadId);
-        await sleep(500);
+    let run;
+    do {
         run = await openai.beta.threads.runs.retrieve(threadId, runId);
-    }
+        if (["queued", "in_progress"].includes(run.status)) {
+            console.info("⏳ Waiting for thread completion:", threadId);
+            await sleep(500);
+        }
+    } while (["queued", "in_progress"].includes(run.status));
     return run;
 };
 
@@ -328,7 +339,7 @@ export default {
         formData.append('file', file);
 
         // Make the fetch request
-        const uploadResponse = await fetch('https://api.openai.com/v1/files', {
+        const uploadResponse = await fetch(`${env.AI_API_GATEWAY || "https://api.openai.com/v1"}/files`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
@@ -346,7 +357,7 @@ export default {
 
         const uploadResult = await uploadResponse.json();
         const fileId = uploadResult.id;
-        const vectorStoreResponse = await fetch(`https://api.openai.com/v1/vector_stores/${env.OPENAI_ASSISTANT_VECTORSTORE_ID}/files`, {
+        const vectorStoreResponse = await fetch(`${env.AI_API_GATEWAY || "https://api.openai.com/v1"}/vector_stores/${env.OPENAI_ASSISTANT_VECTORSTORE_ID}/files`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
