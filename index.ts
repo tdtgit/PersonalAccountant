@@ -148,19 +148,41 @@ const createAndProcessScheduledReport = async (env: Environment, reportType: 'ng
     return "⏰ Scheduled process completed";
 };
 
-app.post('/assistant', async (c) => {    
-    if (c.req.header('X-Telegram-Bot-Api-Secret-Token') !== c.env.TELEGRAM_BOT_SECRET_TOKEN) {
+const assistantQuestion = (c) => {
+    
+}
+
+const assistantOcr = (c) => {
+    
+}
+
+const assistantAdhoc = (c) => {
+    
+}
+
+const verifyAssistantRequest = async (c) => {
+    const secretToken = c.req.header('X-Telegram-Bot-Api-Secret-Token');
+    if (!secretToken || secretToken !== c.env.TELEGRAM_BOT_SECRET_TOKEN) {
         console.error("Authentication failed. You are not welcome here");
         return c.text("Unauthorized", 401);
     }
-    
+
     const { message } = await c.req.json();
     const bot = new Telegraf(c.env.TELEGRAM_BOT_TOKEN);
     
     if (message.from.id != c.env.TELEGRAM_CHAT_ID) {
-        console.warn("⚠️ Received new assistant request from unknown chat:", await c.req.json());
+        console.warn("⚠️ Received new assistant request from unknown chat:", message);
         await sendTelegramMessage(bot, message.chat.id, "Bạn là người dùng không xác định, bạn không phải anh Ảgú");
         return c.text("Unauthorized user");
+    }
+
+    return message;
+}
+
+app.post('/assistant', async (c) => {    
+    const message = await verifyAssistantRequest(c);
+    if (message instanceof Response) {
+        return message; // Stop execution if an error response is returned
     }
 
     console.info("🔫 Received new assistant request:", message.text);
