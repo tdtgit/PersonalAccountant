@@ -44,14 +44,19 @@ const formatTransactionDetails = (details: any) =>
         ? `Transaction error: ${details.error}`
         : `💳 *Có giao dịch thẻ mới nè*\n\n${details.message}\n\n*Từ:* ${details.bank_name || "N/A"}\n*Ngày:* ${details.datetime || "N/A"}\n------------------`;
 
-const createOpenAIClient = (env: Environment) => new OpenAI({
-    project: env.OPENAI_PROJECT_ID,
-    apiKey: env.OPENAI_API_KEY,
 
-    // Your AI gateway, example:
-    // https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
-    baseURL: env.AI_API_GATEWAY || "https://api.openai.com/v1",
-});
+let openai: OpenAI | null = null;
+
+const initOpenAIClient = (env: Environment) => {
+    if (!openai ){
+        openai = new OpenAI({
+            project: env.OPENAI_PROJECT_ID,
+            apiKey: env.OPENAI_API_KEY,
+            baseURL: env.AI_API_GATEWAY || "https://api.openai.com/v1",
+        });
+    }
+    return openai;
+}
 
 /**
  * Sends a Telegram message with the provided message and options.
@@ -64,10 +69,12 @@ const createOpenAIClient = (env: Environment) => new OpenAI({
  * @param {object} [options={}] - Additional options for the message (e.g. reply_to_message_id).
  * @returns {Promise<void>}
  */
+let bot: Telegraf | null = null;
+
 const sendTelegramMessage = async (env: Environment, message: string, options = {}) => {
-    const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
-    bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, normalize(message), { parse_mode: "MarkdownV2", ...options });
-}
+    if (!bot) bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
+    await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, normalize(message), { parse_mode: "MarkdownV2", ...options });
+};
 
 /**
  * Waits for an AI provider thread to complete.
@@ -126,10 +133,10 @@ const formatDateForReport = (reportType: 'ngày' | 'tuần' | 'tháng') => {
  * @returns {Promise<string>} A promise that resolves to a message indicating that the scheduled process has completed.
  */
 const createAndProcessScheduledReport = async (env: Environment, reportType: 'ngày' | 'tuần' | 'tháng') => {
-    const openai = createOpenAIClient(env);
     const prompt = env.OPENAI_ASSISTANT_SCHEDULED_PROMPT.replace("%DATETIME%", formatDateForReport(reportType));
     console.info(`⏰ Processing report for prompt ${prompt}`)
 
+    const openai = initOpenAIClient(env);
     const run = await openai.beta.threads.createAndRun({
         assistant_id: env.OPENAI_ASSISTANT_ID,
         thread: { messages: [{ role: "user", content: prompt }] },
@@ -150,15 +157,15 @@ const createAndProcessScheduledReport = async (env: Environment, reportType: 'ng
 };
 
 const assistantQuestion = (c) => {
-    
+
 }
 
 const assistantOcr = (c) => {
-    
+
 }
 
 const assistantAdhoc = (c) => {
-    
+
 }
 
 const verifyAssistantRequest = async (c) => {
@@ -169,7 +176,7 @@ const verifyAssistantRequest = async (c) => {
     }
 
     const { message } = await c.req.json();
-    
+
     if (message.from.id != c.env.TELEGRAM_CHAT_ID) {
         console.warn("⚠️ Received new assistant request from unknown chat:", message);
         await sendTelegramMessage(c.env, "Bạn là người dùng không xác định, bạn không phải anh Ảgú");
@@ -179,7 +186,7 @@ const verifyAssistantRequest = async (c) => {
     return message;
 }
 
-app.post('/assistant', async (c) => {    
+app.post('/assistant', async (c) => {
     const message = await verifyAssistantRequest(c);
     if (message instanceof Response) {
         return message; // Stop execution if an error response is returned
@@ -187,7 +194,50 @@ app.post('/assistant', async (c) => {
 
     console.info("🔫 Received new assistant request:", message.text);
 
-    const openai = createOpenAIClient(c.env);
+    const available_functions = [{
+        "type": "function",
+        "function": {
+            "name": "assistantQuestion",
+            "description": "Get information of transactions when asked.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "Question in user's request"
+                    }
+                },
+                "required": [
+                    "question"
+                ],
+                "additionalProperties": false
+            },
+            "strict": true
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "assistantOcr",
+            "description": "Process image sent by user and extract information.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "image": {
+                        "type": "object",
+                        "description": "Image sent by user"
+                    }
+                },
+                "required": [
+                    "image"
+                ],
+                "additionalProperties": false
+            },
+            "strict": true
+        }
+    }]
+
+    const openai = initOpenAIClient(c.env);
     const run = await openai.beta.threads.createAndRun({
         assistant_id: c.env.OPENAI_ASSISTANT_ID,
         thread: { messages: [{ role: "user", content: message.text }] },
@@ -308,7 +358,7 @@ export default {
      * @returns {false | { result: string, datetime: string, message: string, amount: number, currency: string, bank_name: string, bank_icon: string }}
      */
     async processEmail(emailData: string, env: Environment) {
-        const openai = createOpenAIClient(env);
+        const openai = initOpenAIClient(env);
         const completion = await openai.chat.completions.create({
             messages: [
                 { role: "system", content: env.OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT },
