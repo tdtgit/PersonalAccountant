@@ -44,38 +44,6 @@ const formatTransactionDetails = (details: any) =>
         ? `Transaction error: ${details.error}`
         : `💳 *Có giao dịch thẻ mới nè*\n\n${details.message}\n\n*Từ:* ${details.bank_name || "N/A"}\n*Ngày:* ${details.datetime || "N/A"}\n------------------`;
 
-
-let openai: OpenAI | null = null;
-
-const initOpenAIClient = (env: Environment) => {
-    if (!openai ){
-        openai = new OpenAI({
-            project: env.OPENAI_PROJECT_ID,
-            apiKey: env.OPENAI_API_KEY,
-            baseURL: env.AI_API_GATEWAY || "https://api.openai.com/v1",
-        });
-    }
-    return openai;
-}
-
-/**
- * Sends a Telegram message with the provided message and options.
- *
- * The message is normalized before sending (special characters are escaped and any "source" markers are removed).
- *
- * @param {Telegraf} bot - The Telegram bot instance.
- * @param {string} chatId - The chat ID to send the message to.
- * @param {string} message - The message to send.
- * @param {object} [options={}] - Additional options for the message (e.g. reply_to_message_id).
- * @returns {Promise<void>}
- */
-let bot: Telegraf | null = null;
-
-const sendTelegramMessage = async (env: Environment, message: string, options = {}) => {
-    if (!bot) bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
-    await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, normalize(message), { parse_mode: "MarkdownV2", ...options });
-};
-
 /**
  * Waits for an AI provider thread to complete.
  *
@@ -94,6 +62,25 @@ const waitForCompletion = async (openai: OpenAI, threadId: string, runId: string
         }
     } while (["queued", "in_progress"].includes(run.status));
     return run;
+};
+
+/**
+ * Sends a Telegram message with the provided message and options.
+ *
+ * The message is normalized before sending (special characters are escaped and any "source" markers are removed).
+ *
+ * @param {Telegraf} bot - The Telegram bot instance.
+ * @param {string} chatId - The chat ID to send the message to.
+ * @param {string} message - The message to send.
+ * @param {object} [options={}] - Additional options for the message (e.g. reply_to_message_id).
+ * @returns {Promise<void>}
+ */
+let bot: Telegraf | null = null;
+
+const sendTelegramMessage = async (env: Environment, message: string, options = {}) => {
+    if (!bot) bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
+    await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, normalize(message), { parse_mode: "MarkdownV2", ...options });
+    console.info("🔫 Telegram response sent successfully");
 };
 
 /**
@@ -136,7 +123,14 @@ const createAndProcessScheduledReport = async (env: Environment, reportType: 'ng
     const prompt = env.OPENAI_ASSISTANT_SCHEDULED_PROMPT.replace("%DATETIME%", formatDateForReport(reportType));
     console.info(`⏰ Processing report for prompt ${prompt}`)
 
-    const openai = initOpenAIClient(env);
+    const openai = new OpenAI({
+        project: env.OPENAI_PROJECT_ID,
+        apiKey: env.OPENAI_API_KEY,
+
+        // Your AI gateway, example:
+        // https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
+        baseURL: env.AI_API_GATEWAY || "https://api.openai.com/v1",
+    });
     const run = await openai.beta.threads.createAndRun({
         assistant_id: env.OPENAI_ASSISTANT_ID,
         thread: { messages: [{ role: "user", content: prompt }] },
@@ -156,16 +150,44 @@ const createAndProcessScheduledReport = async (env: Environment, reportType: 'ng
     return "⏰ Scheduled process completed";
 };
 
-const assistantQuestion = (c) => {
+const assistantQuestion = async (c, message) => {
+    const openai = new OpenAI({
+        project: c.env.OPENAI_PROJECT_ID,
+        apiKey: c.env.OPENAI_API_KEY,
 
+        // Your AI gateway, example:
+        // https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
+        baseURL: c.env.AI_API_GATEWAY || "https://api.openai.com/v1",
+    });
+
+    const run = await openai.beta.threads.createAndRun({
+        assistant_id: c.env.OPENAI_ASSISTANT_ID,
+        thread: { messages: [{ role: "user", content: message.text }] },
+    });
+
+    console.info("🔫 Thread created successfully:", run.thread_id);
+    await waitForCompletion(openai, run.thread_id, run.id);
+
+    const { data: threadMessages } = await openai.beta.threads.messages.list(run.thread_id, { run_id: run.id });
+    console.info("🔫 Message processed successfully:", threadMessages);
+
+    const msg = threadMessages[0]?.content[0]?.text?.value;
+    await sendTelegramMessage(c.env, msg, { reply_to_message_id: message.message_id });
+
+    return c.text("Request completed");
 }
 
 const assistantOcr = (c) => {
 
 }
 
-const assistantAdhoc = (c) => {
+const assistantManualTransaction = async (transaction, env: Environment) => {
+    console.info("🔫 Processing manual transaction:", transaction);
+    const transactionDetails = await processEmail(transaction, env);
 
+    if (!transactionDetails) return "Not okay";
+    await Promise.all([storeTransaction(transactionDetails, env), notifyServices(transactionDetails, env)]);
+    return "📬 Email processed successfully";
 }
 
 const verifyAssistantRequest = async (c) => {
@@ -192,283 +214,241 @@ app.post('/assistant', async (c) => {
         return message; // Stop execution if an error response is returned
     }
 
-    console.info("🔫 Received new assistant request:", message.text);
+    const openai = new OpenAI({
+        project: c.env.OPENAI_PROJECT_ID,
+        apiKey: c.env.OPENAI_API_KEY,
 
-    const available_functions = [{
-        "type": "function",
-        "function": {
-            "name": "assistantQuestion",
-            "description": "Get information of transactions when asked.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "question": {
-                        "type": "string",
-                        "description": "Question in user's request"
-                    }
-                },
-                "required": [
-                    "question"
-                ],
-                "additionalProperties": false
-            },
-            "strict": true
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "assistantOcr",
-            "description": "Process image sent by user and extract information.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "image": {
-                        "type": "object",
-                        "description": "Image sent by user"
-                    }
-                },
-                "required": [
-                    "image"
-                ],
-                "additionalProperties": false
-            },
-            "strict": true
-        }
-    }]
-
-    const openai = initOpenAIClient(c.env);
-    const run = await openai.beta.threads.createAndRun({
-        assistant_id: c.env.OPENAI_ASSISTANT_ID,
-        thread: { messages: [{ role: "user", content: message.text }] },
+        // Your AI gateway, example:
+        // https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
+        baseURL: c.env.AI_API_GATEWAY || "https://api.openai.com/v1",
     });
 
-    console.info("🔫 Thread created successfully:", run.thread_id);
-    await waitForCompletion(openai, run.thread_id, run.id);
+    const available_functions = [{
+        type: "function",
+        name: "assistantQuestion",
+        description: "Get information of transactions when asked.",
+        parameters: {
+            type: "object",
+            properties: {
+                question: {
+                    type: "string",
+                    description: "Question in user's request"
+                }
+            },
+            required: [
+                "question"
+            ],
+            additionalProperties: false
+        },
+        strict: false
+    }, {
+        type: "function",
+        name: "assistantOcr",
+        description: "Process image sent by user and extract information.",
+        parameters: {
+            type: "object",
+            properties: {
+                image: {
+                    type: "string",
+                    description: "Image sent by user"
+                }
+            },
+            required: [
+                "image"
+            ],
+            additionalProperties: false
+        },
+        strict: false
+    }, {
+        type: "function",
+        name: "assistantManualTransaction",
+        description: "Add a transaction manually when user defined.",
+        parameters: {
+            type: "object",
+            properties: {
+                transaction: {
+                    type: "string",
+                    description: "Content of transaction"
+                }
+            },
+            required: [
+                "transaction"
+            ],
+            additionalProperties: false
+        },
+        strict: false
+    }];
 
-    const { data: threadMessages } = await openai.beta.threads.messages.list(run.thread_id, { run_id: run.id });
-    console.info("🔫 Message processed successfully:", threadMessages);
+    console.log("🔫 /assistant/OpenAiResponse request:", message.text);
+    const response = await openai.responses.create({
+        model: "gpt-4o",
+        input: [
+            {
+                role: "user",
+                content: message.text
+            }
+        ],
+        tools: available_functions
+    });
 
-    const msg = threadMessages[0]?.content[0]?.text?.value;
-    await sendTelegramMessage(c.env, msg, { reply_to_message_id: message.message_id });
+    console.log("🔫 /assistant/OpenAiResponse response:", response);
+    switch (response.output[0].name) {
+        case "assistantManualTransaction":
+            console.log("🔫 Processing case assistantManualTransaction");
+            await assistantManualTransaction(JSON.parse(response.output[0].arguments).transaction, c.env);
+            break;
+    }
 
-    console.info("🔫 Telegram response sent successfully");
-    return c.text("Request completed");
+    return c.text("Success");
 });
+
+const email = async (message, env: Environment) => {
+    const parser = new PostalMime();
+    const body = await new Response(message.raw).arrayBuffer();
+    const email = await parser.parse(body);
+    console.info(`📬 New mail arrived! Sender ${email.from.address} (${email.from.address}), subject: ${email.subject}`);
+
+    const emailContent = email.text || email.html;
+    if (!emailContent) throw new Error("📬 Email content is empty");
+
+    const emailData = `Email date: ${email.date}\nEmail sender: ${email.from.name}\nEmail content:\n${emailContent}`;
+    const transactionDetails = await processEmail(emailData, env);
+
+    if (!transactionDetails) return "Not okay";
+
+    await Promise.all([storeTransaction(transactionDetails, env), notifyServices(transactionDetails, env)]);
+    return "📬 Email processed successfully";
+}
+
+const storeTransaction = async (details, env: Environment) => {
+    const fileName = `ArgusChiTieu_transaction_${new Date().toISOString()}.txt`;
+
+    // Seems Cloudflare not allow Workers to write temporary files so
+    // we use HTTP API instead of client library.
+
+    // Convert the details to a text format
+    const transactionText = JSON.stringify(details, null, 2);
+    const formData = new FormData();
+    formData.append('purpose', 'assistants');
+
+    // Create a Blob from the file content
+    const blob = Buffer.from(transactionText); // Convert content to Buffer
+    const file = new File([blob], fileName, { type: 'application/json' });
+
+    // Append the file to FormData
+    formData.append('file', file);
+
+    // Make the fetch request
+    const uploadResponse = await fetch(`${env.AI_API_GATEWAY || "https://api.openai.com/v1"}/files`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
+            // Note: FormData automatically sets the 'Content-Type' boundary, so no need to set it manually
+        },
+        body: formData,
+    });
+
+    // Check if the response is okay
+    if (!uploadResponse.ok) {
+        throw new Error(`Upload transaction file error: ${uploadResponse.statusText}`);
+    }
+
+    console.info(`🤖 Upload ${fileName} successfully`)
+
+    const uploadResult = await uploadResponse.json();
+    const fileId = uploadResult.id;
+    const vectorStoreResponse = await fetch(`${env.AI_API_GATEWAY || "https://api.openai.com/v1"}/vector_stores/${env.OPENAI_ASSISTANT_VECTORSTORE_ID}/files`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
+            'Content-Type': 'application/json',
+            'OpenAI-Beta': 'assistants=v2',
+        },
+        body: JSON.stringify({ file_id: fileId }),
+    });
+
+    // Check if the response for adding to vector store is okay
+    if (!vectorStoreResponse.ok) {
+        throw new Error(`Error adding file to vector store: ${vectorStoreResponse.statusText}`);
+    }
+
+    console.info(`🤖 Add ${fileName} to Vector store successfully`)
+}
+
+const notifyServices = async (details: any, env: Environment) => {
+    const message = formatTransactionDetails(details);
+    await sendTelegramMessage(env, message);
+}
+
+const processEmail = async (emailData: string, env: Environment) => {
+    const openai = new OpenAI({
+        project: env.OPENAI_PROJECT_ID,
+        apiKey: env.OPENAI_API_KEY,
+
+        // Your AI gateway, example:
+        // https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
+        baseURL: env.AI_API_GATEWAY || "https://api.openai.com/v1",
+    });
+
+    console.log(`🤖 Processing email content: ${emailData}`);
+
+    const completion = await openai.chat.completions.create({
+        messages: [
+            { role: "system", content: env.OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT },
+            { role: "user", content: `${env.OPENAI_PROCESS_EMAIL_USER_PROMPT}\n\n${emailData}` },
+        ],
+        model: env.OPENAI_PROCESS_EMAIL_MODEL,
+        store: false,
+    });
+
+    const contentStr = completion.choices[0]?.message?.content?.replaceAll('`', '');
+    if (!contentStr) {
+        console.error("🤖 Failed to parse transaction details");
+        return;
+    }
+    const content = JSON.parse(contentStr);
+    if (content.result === "failed") {
+        console.warn("🤖 Not a transaction email");
+        return;
+    }
+
+    console.info(`🤖 Processed email content: ${JSON.stringify(content)}`);
+    return content;
+}
+
+const dailyReport = async (env: Environment) => {
+    return createAndProcessScheduledReport(env, 'ngày');
+}
+
+const weeklyReport = async (env: Environment) => {
+    return createAndProcessScheduledReport(env, 'tuần');
+}
+
+const monthlyReport = async (env: Environment) => {
+    return createAndProcessScheduledReport(env, 'tháng');
+}
 
 export default {
     fetch: app.fetch,
 
-    /**
-     * Generate a daily report of the transactions.
-     *
-     * This function will be called by Cloudflare at the specified cron time.
-     * The `env` argument is an object that contains the environment variables.
-     */
-    async dailyReport(env: Environment) {
-        return createAndProcessScheduledReport(env, 'ngày');
-    },
-
-    /**
-     * Generate a weekly report of the transactions.
-     *
-     * This function will be called by Cloudflare at the specified cron time.
-     * The `env` argument is an object that contains the environment variables.
-     */
-    async weeklyReport(env: Environment) {
-        return createAndProcessScheduledReport(env, 'tuần');
-    },
-
-    /**
-     * Generate a monthly report of the transactions.
-     *
-     * This function will be called by Cloudflare at the specified cron time.
-     * The `env` argument is an object that contains the environment variables.
-     */
-    async monthlyReport(env: Environment) {
-        return createAndProcessScheduledReport(env, 'tháng');
-    },
-
-    /**
-     * This function is a Cloudflare scheduled worker.
-     *
-     * It will be called by Cloudflare at the specified cron time.
-     * The `event` argument is an object that contains information about the scheduled task,
-     * and the `env` argument is an object that contains the environment variables.
-     *
-     * Depending on the cron time, it will call either the `dailyReport`, `weeklyReport`, or `monthlyReport` function.
-     */
     async scheduled(event, env: Environment) {
         switch (event.cron) {
             case "0 15 * * *":
                 console.info("⏰ Daily scheduler triggered");
-                await this.dailyReport(env);
+                await dailyReport(env);
                 break;
             case "58 16 * * 0":
                 console.info("⏰ Weekly scheduler triggered");
-                await this.weeklyReport(env);
+                await weeklyReport(env);
                 break;
             case "0 15 1 * *":
                 console.info("⏰ Monthly scheduler triggered");
-                await this.monthlyReport(env);
+                await monthlyReport(env);
                 break;
         }
     },
 
-    /**
-     * Process an incoming email.
-     *
-     * This function is a Cloudflare Email Worker.
-     * The `message` argument is an object that contains the email data,
-     * and the `env` argument is an object that contains the environment variables.
-     *
-     * This function will try to parse the email content and extract information from it.
-     * If the content is not a transaction email, it will return "Not okay".
-     * If it is a transaction email, it will store the transaction details in the vector store
-     * and notify the telegram bot.
-     * The function will return "Email processed successfully" if everything is okay.
-     */
     async email(message, env: Environment) {
-        const parser = new PostalMime();
-        const body = await new Response(message.raw).arrayBuffer();
-        const email = await parser.parse(body);
-        console.info(`📬 New mail arrived! Sender ${email.from.address} (${email.from.address}), subject: ${email.subject}`);
-
-        const emailContent = email.text || email.html;
-        if (!emailContent) throw new Error("📬 Email content is empty");
-
-        const emailData = `Email date: ${email.date}\nEmail sender: ${email.from.name}\nEmail content:\n${emailContent}`;
-        const transactionDetails = await this.processEmail(emailData, env);
-
-        if (!transactionDetails) return "Not okay";
-
-        await Promise.all([this.storeTransaction(transactionDetails, env), this.notifyServices(transactionDetails, env)]);
-        return "📬 Email processed successfully";
-    },
-
-    /**
-     * Process an email using AI provider's chat completion API.
-     *
-     * Given an email data, it will call AI provider's chat completion API with the email data and the configured system/user prompts.
-     * The response will be parsed as JSON and returned.
-     * If the response is not a transaction email, `false` will be returned.
-     * If the response is a transaction email, the transaction details will be returned as an object.
-     * @param {string} emailData - The email data
-     * @param {Environment} env - The environment variables
-     * @returns {false | { result: string, datetime: string, message: string, amount: number, currency: string, bank_name: string, bank_icon: string }}
-     */
-    async processEmail(emailData: string, env: Environment) {
-        const openai = initOpenAIClient(env);
-        const completion = await openai.chat.completions.create({
-            messages: [
-                { role: "system", content: env.OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT },
-                { role: "user", content: `${env.OPENAI_PROCESS_EMAIL_USER_PROMPT}\n\n${emailData}` },
-            ],
-            model: env.OPENAI_PROCESS_EMAIL_MODEL,
-            store: false,
-        });
-
-        const contentStr = completion.choices[0]?.message?.content?.replaceAll('`', '');
-        if (!contentStr) {
-            console.error("🤖 Failed to parse transaction details");
-            return;
-        }
-
-        const content = JSON.parse(contentStr);
-        if (content.result === "failed") {
-            console.warn("🤖 Not a transaction email");
-            return;
-        }
-
-        console.info(`🤖 Processed email content: ${JSON.stringify(content)}`);
-        return content;
-    },
-
-    /**
-     * Store a transaction in AI provider's vector store.
-     * @param {false | { result: string, datetime: string, message: string, amount: number, currency: string, bank_name: string, bank_icon: string }} details - The transaction details
-     * @param {Environment} env - The environment variables
-     * @returns {Promise<void>}
-     * Resolves when the transaction is stored successfully.
-     * Rejects if any error occurs during the process.
-     */
-    async storeTransaction(details, env: Environment) {
-        const fileName = `ArgusChiTieu_transaction_${new Date().toISOString()}.txt`;
-
-        // Seems Cloudflare not allow Workers to write temporary files so
-        // we use HTTP API instead of client library.
-
-        // Convert the details to a text format
-        const transactionText = JSON.stringify(details, null, 2);
-        const formData = new FormData();
-        formData.append('purpose', 'assistants');
-
-        // Create a Blob from the file content
-        const blob = Buffer.from(transactionText); // Convert content to Buffer
-        const file = new File([blob], fileName, { type: 'application/json' });
-
-        // Append the file to FormData
-        formData.append('file', file);
-
-        // Make the fetch request
-        const uploadResponse = await fetch(`${env.AI_API_GATEWAY || "https://api.openai.com/v1"}/files`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
-                // Note: FormData automatically sets the 'Content-Type' boundary, so no need to set it manually
-            },
-            body: formData,
-        });
-
-        // Check if the response is okay
-        if (!uploadResponse.ok) {
-            throw new Error(`Upload transaction file error: ${uploadResponse.statusText}`);
-        }
-
-        console.info(`🤖 Upload ${fileName} successfully`)
-
-        const uploadResult = await uploadResponse.json();
-        const fileId = uploadResult.id;
-        const vectorStoreResponse = await fetch(`${env.AI_API_GATEWAY || "https://api.openai.com/v1"}/vector_stores/${env.OPENAI_ASSISTANT_VECTORSTORE_ID}/files`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
-                'Content-Type': 'application/json',
-                'OpenAI-Beta': 'assistants=v2',
-            },
-            body: JSON.stringify({ file_id: fileId }),
-        });
-
-        // Check if the response for adding to vector store is okay
-        if (!vectorStoreResponse.ok) {
-            throw new Error(`Error adding file to vector store: ${vectorStoreResponse.statusText}`);
-        }
-
-        console.info(`🤖 Add ${fileName} to Vector store successfully`)
-    },
-
-    /**
-     * Notify all services of a new transaction.
-     *
-     * Currently only notifies Telegram.
-     *
-     * @param {object} details - The transaction details
-     * @param {object} env - The environment variables
-     * @returns {Promise<void>}
-     */
-    async notifyServices(details: any, env: Environment) {
-        await this.sendTelegramNotification(details, env);
-    },
-
-    /**
-     * Sends a Telegram notification with the transaction details.
-     *
-     * @param {object} details - The transaction details
-     * @param {object} env - The environment variables
-     * @returns {Promise<void>}
-     */
-    async sendTelegramNotification(details: any, env: Environment) {
-        const message = formatTransactionDetails(details);
-        await sendTelegramMessage(env, message);
-    },
+        return email(message, env);
+    }
 };

@@ -5,14 +5,15 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
-    "start": "wrangler dev"
+    "start": "wrangler dev",
+    "tail": "wrangler tail"
   },
   "devDependencies": {
-    "wrangler": "^3.111.0"
+    "wrangler": "^3.114.2"
   },
   "dependencies": {
-    "hono": "^4.7.2",
-    "openai": "^4.85.4",
+    "hono": "^4.7.5",
+    "openai": "^4.89.0",
     "postal-mime": "^2.4.3",
     "telegraf": "^4.16.3"
   }
