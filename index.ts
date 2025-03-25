@@ -64,8 +64,10 @@ const createOpenAIClient = (env: Environment) => new OpenAI({
  * @param {object} [options={}] - Additional options for the message (e.g. reply_to_message_id).
  * @returns {Promise<void>}
  */
-const sendTelegramMessage = async (bot: Telegraf, chatId: string, message: string, options = {}) =>
-    bot.telegram.sendMessage(chatId, normalize(message), { parse_mode: "MarkdownV2", ...options });
+const sendTelegramMessage = async (env: Environment, message: string, options = {}) => {
+    const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
+    bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, normalize(message), { parse_mode: "MarkdownV2", ...options });
+}
 
 /**
  * Waits for an AI provider thread to complete.
@@ -141,8 +143,7 @@ const createAndProcessScheduledReport = async (env: Environment, reportType: 'ng
 
     const msgContent = threadMessages[0]?.content[0]?.text?.value;
     const msg = `🥳 Báo cáo ${reportType} tới rồi đêi\n\n${msgContent}\n------------------`;
-    const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
-    await sendTelegramMessage(bot, env.TELEGRAM_CHAT_ID, msg);
+    await sendTelegramMessage(env, msg);
 
     console.info(`⏰ ${reportType.charAt(0).toUpperCase() + reportType.slice(1)} message sent successfully`);
     return "⏰ Scheduled process completed";
@@ -168,11 +169,10 @@ const verifyAssistantRequest = async (c) => {
     }
 
     const { message } = await c.req.json();
-    const bot = new Telegraf(c.env.TELEGRAM_BOT_TOKEN);
     
     if (message.from.id != c.env.TELEGRAM_CHAT_ID) {
         console.warn("⚠️ Received new assistant request from unknown chat:", message);
-        await sendTelegramMessage(bot, message.chat.id, "Bạn là người dùng không xác định, bạn không phải anh Ảgú");
+        await sendTelegramMessage(c.env, "Bạn là người dùng không xác định, bạn không phải anh Ảgú");
         return c.text("Unauthorized user");
     }
 
@@ -200,7 +200,7 @@ app.post('/assistant', async (c) => {
     console.info("🔫 Message processed successfully:", threadMessages);
 
     const msg = threadMessages[0]?.content[0]?.text?.value;
-    await sendTelegramMessage(bot, c.env.TELEGRAM_CHAT_ID, msg, { reply_to_message_id: message.message_id });
+    await sendTelegramMessage(c.env, msg, { reply_to_message_id: message.message_id });
 
     console.info("🔫 Telegram response sent successfully");
     return c.text("Request completed");
@@ -418,8 +418,7 @@ export default {
      * @returns {Promise<void>}
      */
     async sendTelegramNotification(details: any, env: Environment) {
-        const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
         const message = formatTransactionDetails(details);
-        await sendTelegramMessage(bot, env.TELEGRAM_CHAT_ID, message);
+        await sendTelegramMessage(env, message);
     },
 };
