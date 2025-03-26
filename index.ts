@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
+import { logger } from 'hono/logger'
 import PostalMime from 'postal-mime';
 import OpenAI from 'openai';
 import { Telegraf } from 'telegraf';
+import { Buffer } from 'node:buffer';
 
 type Environment = {
     readonly TELEGRAM_CHAT_ID: string;
@@ -23,6 +25,7 @@ type Environment = {
 };
 
 const app = new Hono<{ Bindings: Environment }>();
+app.use(logger())
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -94,9 +97,11 @@ const sendTelegramMessage = async (env: Environment, message: string, options = 
  * - For "tuần", the date range is returned in the format "YYYY-MM-DD đến YYYY-MM-DD".
  * - For "tháng", the date is returned in the format "MM/YYYY".
  */
-const formatDateForReport = (reportType: 'ngày' | 'tuần' | 'tháng') => {
+const formatDate = (reportType?: 'giờ' |'ngày' | 'tuần' | 'tháng') => {
     const currentDate = new Date();
     switch (reportType) {
+        case 'giờ':
+            return currentDate.toLocaleTimeString('vi-VN', { timeZone: "Asia/Bangkok" });
         case 'ngày':
             return currentDate.toLocaleDateString('vi-VN', { timeZone: "Asia/Bangkok" });
         case 'tuần':
@@ -108,6 +113,8 @@ const formatDateForReport = (reportType: 'ngày' | 'tuần' | 'tháng') => {
             return ` từ ${formattedMonday} đến ${formattedSunday}`;
         case 'tháng':
             return `${currentDate.getMonth() + 1}/${currentDate.getFullYear()}`;
+        default:
+            return `${formatDate('ngày')} vào lúc ${formatDate('giờ')}`;
     }
 };
 
@@ -120,7 +127,7 @@ const formatDateForReport = (reportType: 'ngày' | 'tuần' | 'tháng') => {
  * @returns {Promise<string>} A promise that resolves to a message indicating that the scheduled process has completed.
  */
 const createAndProcessScheduledReport = async (env: Environment, reportType: 'ngày' | 'tuần' | 'tháng') => {
-    const prompt = env.OPENAI_ASSISTANT_SCHEDULED_PROMPT.replace("%DATETIME%", formatDateForReport(reportType));
+    const prompt = env.OPENAI_ASSISTANT_SCHEDULED_PROMPT.replace("%DATETIME%", formatDate(reportType));
     console.info(`⏰ Processing report for prompt ${prompt}`)
 
     const openai = new OpenAI({
@@ -177,13 +184,69 @@ const assistantQuestion = async (c, message) => {
     return c.text("Request completed");
 }
 
-const assistantOcr = (c) => {
 
+// Function to download telegram file from bot from file_id and return as base64
+const downloadTelegramFile = async (fileId: string, env: Environment) => {
+    const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    const fileUrl = `https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${data.result.file_path}`;
+    const fileResponse = await fetch(fileUrl);
+    const buffer = Buffer.from(await fileResponse.arrayBuffer());
+
+    // Extract the file extension to determine the image type
+    const fileExtension = data.result.file_path.split('.').pop();
+    const imageType = fileExtension ? fileExtension : 'jpeg';
+
+    console.log("🔫 File downloaded successfully", `data:image/${imageType};base64,${buffer.toString('base64')}`);
+
+    return `data:image/${imageType};base64,${buffer.toString('base64')}`;
+}
+
+
+const imageOcr = async (message, c) => {
+    let imgB64 = await downloadTelegramFile(message.photo[3].file_id, c.env);
+
+    const openai = new OpenAI({
+        project: c.env.OPENAI_PROJECT_ID,
+        apiKey: c.env.OPENAI_API_KEY,
+
+        // Your AI gateway, example:
+        // https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
+        baseURL: c.env.AI_API_GATEWAY || "https://api.openai.com/v1",
+    });
+
+    const response = await openai.responses.create({
+        model: "gpt-4o-mini",
+        input: [
+            {
+                role: "user",
+                content: [
+                    { type: "input_text", text: `Print the text inside the image. Try to focus on store name, date time (if not found, please use ${formatDate()}), price tag of receipt` },
+                    {
+                        type: "input_image",
+                        image_url: imgB64,
+                    },
+                ],
+            },
+        ],
+    });
+    
+    return response.output_text;
+}
+
+const assistantOcr = async (message, c) => {
+    const transaction = await imageOcr(message, c);
+    const transactionDetails = await processTransaction(transaction, c.env);
+
+    if (!transactionDetails) return "Not okay";
+    await Promise.all([storeTransaction(transactionDetails, c.env), notifyServices(transactionDetails, c.env)]);
+    return "📬 Email processed successfully";
 }
 
 const assistantManualTransaction = async (transaction, env: Environment) => {
     console.info("🔫 Processing manual transaction:", transaction);
-    const transactionDetails = await processEmail(transaction, env);
+    const transactionDetails = await processTransaction(transaction, env);
 
     if (!transactionDetails) return "Not okay";
     await Promise.all([storeTransaction(transactionDetails, env), notifyServices(transactionDetails, env)]);
@@ -279,6 +342,12 @@ app.post('/assistant', async (c) => {
         strict: false
     }];
 
+    if (message.text === undefined) {
+        console.log("🔫 Processing case assistantOcr");
+        await assistantOcr(message, c);
+        return c.text("Success");
+    }
+
     console.log("🔫 /assistant/OpenAiResponse request:", message.text);
     const response = await openai.responses.create({
         model: "gpt-4o",
@@ -290,13 +359,20 @@ app.post('/assistant', async (c) => {
         ],
         tools: available_functions
     });
-
     console.log("🔫 /assistant/OpenAiResponse response:", response);
+
     switch (response.output[0].name) {
         case "assistantManualTransaction":
             console.log("🔫 Processing case assistantManualTransaction");
             await assistantManualTransaction(JSON.parse(response.output[0].arguments).transaction, c.env);
             break;
+        case "assistantQuestion":
+            console.log("🔫 Processing case assistantQuestion");
+            await assistantQuestion(c, message);
+            break;
+        default:
+            console.log("🔫 Processing default case");
+            return c.text("Request completed");
     }
 
     return c.text("Success");
@@ -312,7 +388,7 @@ const email = async (message, env: Environment) => {
     if (!emailContent) throw new Error("📬 Email content is empty");
 
     const emailData = `Email date: ${email.date}\nEmail sender: ${email.from.name}\nEmail content:\n${emailContent}`;
-    const transactionDetails = await processEmail(emailData, env);
+    const transactionDetails = await processTransaction(emailData, env);
 
     if (!transactionDetails) return "Not okay";
 
@@ -380,7 +456,7 @@ const notifyServices = async (details: any, env: Environment) => {
     await sendTelegramMessage(env, message);
 }
 
-const processEmail = async (emailData: string, env: Environment) => {
+const processTransaction = async (emailData: string, env: Environment) => {
     const openai = new OpenAI({
         project: env.OPENAI_PROJECT_ID,
         apiKey: env.OPENAI_API_KEY,
