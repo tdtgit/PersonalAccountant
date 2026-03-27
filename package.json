@@ -6,7 +6,8 @@
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "start": "wrangler dev",
-    "tail": "wrangler tail"
+    "tail": "wrangler tail",
+    "test": "bun test"
   },
   "devDependencies": {
     "wrangler": "^3.114.2"

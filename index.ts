@@ -29,7 +29,7 @@ app.use(logger())
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const normalize = (text: string) =>
+export const normalize = (text: string) =>
     text.replace(/[_\[\]~`>#\+\-=|{}.!]/g, '\\$&').replace(/【\d+:\d+†source】/g, '');
 
 /**
@@ -42,7 +42,7 @@ const normalize = (text: string) =>
  * @param {string} [details.datetime="N/A"] - Datetime of the transaction.
  * @returns {string} Formatted string with transaction details or error message.
  */
-const formatTransactionDetails = (details: any) =>
+export const formatTransactionDetails = (details: any) =>
     details.error
         ? `Transaction error: ${details.error}`
         : `💳 *Có giao dịch thẻ mới nè*\n\n${details.message}\n\n*Từ:* ${details.bank_name || "N/A"}\n*Ngày:* ${details.datetime || "N/A"}\n------------------`;
