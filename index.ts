@@ -184,6 +184,12 @@ const assistantQuestion = async (c, message) => {
     return c.text("Request completed");
 }
 
+const getLatestPhotoFileId = (message): string | null => {
+    const photos = message?.photo;
+    if (!Array.isArray(photos) || photos.length === 0) return null;
+    return photos[photos.length - 1]?.file_id ?? null;
+};
+
 
 // Function to download telegram file from bot from file_id and return as base64
 const downloadTelegramFile = async (fileId: string, env: Environment) => {
@@ -205,7 +211,10 @@ const downloadTelegramFile = async (fileId: string, env: Environment) => {
 
 
 const imageOcr = async (message, c) => {
-    let imgB64 = await downloadTelegramFile(message.photo[3].file_id, c.env);
+    const fileId = getLatestPhotoFileId(message);
+    if (!fileId) throw new Error("No photo found in telegram message");
+
+    let imgB64 = await downloadTelegramFile(fileId, c.env);
 
     const openai = new OpenAI({
         project: c.env.OPENAI_PROJECT_ID,
@@ -361,10 +370,16 @@ app.post('/assistant', async (c) => {
     });
     console.log("🔫 /assistant/OpenAiResponse response:", response);
 
-    switch (response.output[0].name) {
+    const functionCall = response.output.find((item) => item.type === "function_call");
+    if (!functionCall) {
+        console.log("🔫 No function call from model, finishing request");
+        return c.text("Request completed");
+    }
+
+    switch (functionCall.name) {
         case "assistantManualTransaction":
             console.log("🔫 Processing case assistantManualTransaction");
-            await assistantManualTransaction(JSON.parse(response.output[0].arguments).transaction, c.env);
+            await assistantManualTransaction(JSON.parse(functionCall.arguments).transaction, c.env);
             break;
         case "assistantQuestion":
             console.log("🔫 Processing case assistantQuestion");
@@ -482,7 +497,13 @@ const processTransaction = async (emailData: string, env: Environment) => {
         console.error("🤖 Failed to parse transaction details");
         return;
     }
-    const content = JSON.parse(contentStr);
+    let content;
+    try {
+        content = JSON.parse(contentStr);
+    } catch (error) {
+        console.error("🤖 Failed to parse transaction JSON", error);
+        return;
+    }
     if (content.result === "failed") {
         console.warn("🤖 Not a transaction email");
         return;
