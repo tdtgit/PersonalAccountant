@@ -10,7 +10,7 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "wrangler": "^4.77.0"
+    "wrangler": "^4.79.0"
   },
   "dependencies": {
     "hono": "^4.7.5",
