@@ -10,10 +10,10 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "wrangler": "^4.77.0"
+    "wrangler": "^4.80.0"
   },
   "dependencies": {
-    "hono": "^4.7.5",
+    "hono": "^4.12.12",
     "openai": "^6.33.0",
     "postal-mime": "^2.4.3",
     "telegraf": "^4.16.3"
