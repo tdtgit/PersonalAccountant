@@ -206,6 +206,17 @@ describe("verifyAssistantRequest", () => {
 });
 
 describe("handleAssistantRequest", () => {
+  it("returns Hono and Cloudflare runtime metadata at the root route", async () => {
+    const response = await worker.fetch(new Request("https://worker.example/"), env);
+
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      service: "PersonalAccountant",
+      runtime: "Cloudflare Workers",
+      framework: "Hono",
+    });
+  });
+
   it("falls back to assistantQuestion when the router returns no function call", async () => {
     openAiResponses = [
       { output: [] },
