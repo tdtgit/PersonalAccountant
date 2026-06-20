@@ -369,8 +369,9 @@ app.post('/assistant', async (c) => {
 
     const functionCall = response.output.find((item) => item.type === "function_call");
     if (!functionCall) {
-        console.log("🔫 No function call from model, finishing request");
-        return c.text("Request completed");
+        console.log("🔫 No function call from model, falling back to assistantQuestion");
+        await assistantQuestion(c, message);
+        return c.text("Success");
     }
 
     switch (functionCall.name) {
