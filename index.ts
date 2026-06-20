@@ -61,9 +61,33 @@ const createOpenAIClient = (env: Environment) => new OpenAI({
     baseURL: env.AI_API_GATEWAY || "https://api.openai.com/v1",
 });
 
+
+const getTelegramMessageContent = (message): string | null => {
+    const content = message?.text || message?.caption;
+    return typeof content === "string" && content.trim() ? content : null;
+};
+
+const getReplyContext = (message): string | null => getTelegramMessageContent(message?.reply_to_message);
+
+export const buildMessageWithReplyContext = (message, fallbackText?: string) => {
+    const currentText = fallbackText || getTelegramMessageContent(message) || "";
+    const replyContext = getReplyContext(message);
+
+    if (!replyContext) return currentText;
+
+    return [
+        "The user is replying to this previous Telegram message. Use it as conversational context, especially for follow-up references like 'this', 'that', 'why', 'more details', or corrections.",
+        `Previous Telegram message:
+${replyContext}`,
+        `Current user message:
+${currentText}`,
+    ].join("\n\n");
+};
+
 const askTransactionAssistant = async (env: Environment, input: string) => {
     const response = await createOpenAIClient(env).responses.create({
         model: env.OPENAI_ASSISTANT_MODEL || DEFAULT_ASSISTANT_MODEL,
+        instructions: "Answer personal finance questions using the transaction vector store. If the user reply includes a previous Telegram message, use it as context for the current request. Be concise and answer in Vietnamese unless the user asks otherwise.",
         input,
         tools: [{
             type: "file_search",
@@ -146,8 +170,8 @@ const createAndProcessScheduledReport = async (env: Environment, reportType: 'ng
     return "⏰ Scheduled process completed";
 };
 
-const assistantQuestion = async (c, message) => {
-    const msg = await askTransactionAssistant(c.env, message.text);
+const assistantQuestion = async (c, message, question?: string) => {
+    const msg = await askTransactionAssistant(c.env, buildMessageWithReplyContext(message, question));
     console.info("🔫 Message processed successfully:", msg);
 
     await sendTelegramMessage(c.env, msg, { reply_to_message_id: message.message_id });
@@ -317,7 +341,7 @@ app.post('/assistant', async (c) => {
         input: [
             {
                 role: "user",
-                content: message.text
+                content: buildMessageWithReplyContext(message)
             }
         ],
         tools: [...available_functions]
@@ -337,7 +361,7 @@ app.post('/assistant', async (c) => {
             break;
         case "assistantQuestion":
             console.log("🔫 Processing case assistantQuestion");
-            await assistantQuestion(c, message);
+            await assistantQuestion(c, message, JSON.parse(functionCall.arguments).question);
             break;
         default:
             console.log("🔫 Processing default case");
