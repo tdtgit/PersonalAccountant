@@ -44,7 +44,10 @@ const app = new Hono<{ Bindings: Environment }>();
 app.use(logger())
 
 export const normalize = (text: string) =>
-    text.replace(/[_\[\]~`>#\+\-=|{}.!]/g, '\\$&').replace(/【\d+:\d+†source】/g, '');
+    text.replace(/【\d+:\d+†source】/g, '').replace(/[_\[\]\(\)~`>#\+\-=|{}.!]/g, '\\$&');
+
+export const stripTelegramMarkdown = (text: string) =>
+    text.replace(/【\d+:\d+†source】/g, '').replace(/[\*_\[\]\(\)~`>#\+\-=|{}.!]/g, '');
 
 /**
  * Formats transaction details into a readable string for Telegram notification.
@@ -122,8 +125,15 @@ let bot: Telegraf | null = null;
 
 const sendTelegramMessage = async (env: Environment, message: string, options = {}) => {
     if (!bot) bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
-    await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, normalize(message), { parse_mode: "MarkdownV2", ...options });
-    console.info("🔫 Telegram response sent successfully");
+
+    try {
+        await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, normalize(message), { parse_mode: "MarkdownV2", ...options });
+        console.info("🔫 Telegram response sent successfully");
+    } catch (error) {
+        console.warn("⚠️ Telegram MarkdownV2 response failed, retrying as plain text", error);
+        await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, stripTelegramMarkdown(message), options);
+        console.info("🔫 Telegram plain-text fallback response sent successfully");
+    }
 };
 
 /**

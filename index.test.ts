@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { buildMessageWithReplyContext, formatTransactionDetails, normalize } from "./index";
+import { buildMessageWithReplyContext, formatTransactionDetails, normalize, stripTelegramMarkdown } from "./index";
 
 describe("normalize", () => {
   it("escapes Telegram MarkdownV2 characters and removes source markers", () => {
@@ -9,8 +9,18 @@ describe("normalize", () => {
     expect(output).toBe("Amount \\[100\\]\\_\\! from \\#shop\\.");
   });
 
+  it("escapes Telegram MarkdownV2 parentheses", () => {
+    expect(normalize("Paid (AUD)")).toBe("Paid \\(AUD\\)");
+  });
+
   it("preserves single-asterisk Telegram MarkdownV2 bold markers", () => {
     expect(normalize("*Tổng cộng:* 100 AUD")).toBe("*Tổng cộng:* 100 AUD");
+  });
+
+  it("strips Telegram Markdown markers for the plain-text fallback", () => {
+    expect(stripTelegramMarkdown("*Tổng cộng:* 100 AUD (ước tính).【12:3†source】")).toBe(
+      "Tổng cộng: 100 AUD ước tính"
+    );
   });
 });
 
