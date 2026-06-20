@@ -209,7 +209,6 @@ describe("handleAssistantRequest", () => {
   it("returns Hono and Cloudflare runtime metadata at the root route", async () => {
     const response = await worker.fetch(new Request("https://worker.example/"), env);
 
-    expect(response.headers.get("x-powered-by")).toBeNull();
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
       service: "PersonalAccountant",

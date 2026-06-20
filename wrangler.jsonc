@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "mine-personal-accounting",
   "main": "index.ts",
-  "compatibility_date": "2026-06-21",
+  "compatibility_date": "2026-06-16",
   "compatibility_flags": ["nodejs_compat"],
   "triggers": {
     "crons": ["0 15 * * *", "58 16 * * 0", "0 15 1 * *"]
