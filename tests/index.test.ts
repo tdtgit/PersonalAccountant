@@ -402,7 +402,7 @@ describe("scheduled reports", () => {
     ];
 
     await worker.scheduled({ cron: "0 15 * * *" }, env);
-    await worker.scheduled({ cron: "58 16 * * 0" }, env);
+    await worker.scheduled({ cron: "58 16 * * 1" }, env);
     await worker.scheduled({ cron: "0 15 1 * *" }, env);
 
     expect(openAiResponsesCreate).toHaveBeenCalledTimes(3);
