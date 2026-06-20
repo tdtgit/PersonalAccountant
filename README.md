@@ -13,14 +13,14 @@ The whole project is written and optimized by ChatGPT. Feel free to create issue
 
 ## Application flow
 
-Transaction emails will be forwarded to a "virtual" email address managed by [Cloudflare Email Workers](https://developers.cloudflare.com/email-routing/email-workers/). These emails will then be processed by OpenAI's chat completion API to extract key information, such as the `amount`, `currency`, and `description`. After extracting the details, the workflow will:
+Transaction emails will be forwarded to a "virtual" email address managed by [Cloudflare Email Workers](https://developers.cloudflare.com/email-routing/email-workers/). These emails will then be processed by OpenAI's Responses API to extract key information, such as the `amount`, `currency`, and `description`. After extracting the details, the workflow will:
 
 ![Application flow](docs/PersonalAccountant.drawio.png)
 
 1. Trigger a notification (currently set to send alerts via Telegram).
 2. Upload the processed text to the [vector database store](https://platform.openai.com/storage/vector_stores) on the OpenAI platform.
 
-Since the data is stored in a personal vector database, you can make queries by sending a message to your Telegram bot. The bot will then call the Cloudflare worker using a Telegram webhook. These "on-demand" requests will be processed by the [OpenAI Assistant](https://platform.openai.com/assistants).
+Since the data is stored in a personal vector database, you can make queries by sending a message to your Telegram bot. The bot will then call the Cloudflare worker using a Telegram webhook. These "on-demand" requests will be processed by the [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses) with file search over the configured vector store.
 
 ## Prerequisite
 
@@ -66,10 +66,9 @@ The application requires the following environment variables:
 | `OPENAI_ASSISTANT_SCHEDULED_PROMPT` | User prompt for daily transaction summary | Yes | - |
 | `OPENAI_PROCESS_EMAIL_MODEL`     | The model used by OpenAI for email/manual transaction processing.         | Yes      | `gpt-5.4-mini` |
 | `OPENAI_OCR_MODEL`               | The vision model used to extract receipt text from Telegram images.       | No       | `gpt-5.4-mini` |
-| `OPENAI_ASSISTANT_MODEL`         | The model override used for assistant question/report runs.               | No       | `gpt-5.4-mini` |
+| `OPENAI_ASSISTANT_MODEL`         | The Responses API model used for transaction questions and report runs.   | No       | `gpt-5.4-mini` |
 | `OPENAI_ASSISTANT_ROUTER_MODEL`  | The model used to route Telegram messages to assistant functions.         | No       | `gpt-5.4-mini` |
-| `OPENAI_ASSISTANT_VECTORSTORE_ID`| The vector store identifier for storing processed data in OpenAI.        | Yes      | -       |
-| `OPENAI_ASSISTANT_ID`            | Assistant ID for OpenAI's thread execution.                              | Yes      | -       |
+| `OPENAI_ASSISTANT_VECTORSTORE_ID`| The vector store identifier for storing processed data in OpenAI and answering questions with file search. | Yes      | -       |
 
 ## TODO
 - [ ] Whitelist email addresses.
