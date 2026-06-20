@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "mine-personal-accounting",
+  "main": "index.ts",
+  "compatibility_date": "2026-06-21",
+  "compatibility_flags": ["nodejs_compat"],
+  "triggers": {
+    "crons": ["0 15 * * *", "58 16 * * 0", "0 15 1 * *"]
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "vars": {
+    "OPENAI_PROCESS_EMAIL_MODEL": "gpt-5.4-mini",
+    "OPENAI_OCR_MODEL": "gpt-5.4-mini",
+    "OPENAI_ASSISTANT_MODEL": "gpt-5.4-mini",
+    "OPENAI_ASSISTANT_ROUTER_MODEL": "gpt-5.4-mini",
+    "OPENAI_ASSISTANT_RESPONSE_FORMAT_INSTRUCTIONS": "Format answers for Telegram MarkdownV2. Use *single asterisks* for bold labels/headings; do not use double-asterisk Markdown because Telegram MarkdownV2 bold uses single asterisks. When listing multiple transactions, use short bullet points. Format all money amounts in Vietnamese number style: use dots for thousands and commas for decimal fractions; remove insignificant trailing decimal zeros for non-VND currencies (for example, write 16 AUD instead of 16.000 AUD, and 5,24 AUD instead of 5.240 AUD). When showing transaction times, include only hour and minute (HH:mm); do not include seconds. When the user does not specify a limit or count, assume they want all matching transactions. If all matching transactions would be too large or token-expensive to list, return the 20 transactions closest to the requested time period and clearly say that the list was limited to 20. When the answer includes multiple dates, split the response into separate bold date sections. When there are 3 or more transactions, include a bold total summary at the bottom. When there are 10 or more transactions, do not use Markdown tables because Telegram MarkdownV2 does not support them reliably; use grouped date sections with bullet points instead.",
+    "OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT": "You act like an personal accountant, extracts email transaction details and summary them in JSON plain format, not markdown, not HTML, just plain JSON like below. No yapping.\n\n{\n\"bank_name\": \"...\",\n\"datetime\": \"...\",\n\"amount\": \"...\",\n\"currency\": \"...\",\n\"message: \"...\",\n\"plain_data\": \"...\"\n}\n\nIf it's not a transaction, just return { \"result\": \"failed\" }.",
+    "OPENAI_PROCESS_EMAIL_USER_PROMPT": "No yapping. Extract the transaction details such as:\n\nbank name:\namount: human-readable, example: 1.000, 4.320.000\ndatetime: dd/MM/yyyy hh:mm:ss\ncurrency: try to stick with three letter code. If VND, must change to VNĐ\nmessage: summary, classify the transaction detail in one paragraph (30-50 words or lesser, non-formal). Focus on purchase order, product name or person who I sent the money to; Grab/Uber group orders; sometimes I sent money between my bank account, you can know by lookup my name (DUONG ANH TUAN, or Đường Anh Tuấn), and no need to repeat my name in the message; or they are credit card transaction. In Vietnamese only. DO NOT REMOVE amount, currency in message.\nplain_data: collect, classify the transaction detail in around 200-400 words. Ensure you collect and store enough information of orders (example if food order: pay method (momo, credit card, COD); food store name; number, list of food I ordered; total discount) so we can query later. Just plain information, do not include any advertisement, do not include any offers advertisement (like group order), sales in the email.\n\nFrom the following email content:",
+    "OPENAI_ASSISTANT_SCHEDULED_PROMPT": "Tổng hợp ngắn, phân loại các giao dịch được tạo trong ngày hôm nay %DATETIME%"
+  }
+}

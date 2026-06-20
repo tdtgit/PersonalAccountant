@@ -7,9 +7,11 @@
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "tail": "wrangler tail",
+    "cf-typegen": "wrangler types",
     "test": "bun test"
   },
   "devDependencies": {
+    "@types/node": "^26.0.0",
     "wrangler": "^4.103.0"
   },
   "dependencies": {
