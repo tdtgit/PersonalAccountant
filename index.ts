@@ -37,7 +37,7 @@ export default {
                 console.info("⏰ Daily scheduler triggered");
                 await dailyReport(env);
                 break;
-            case "58 16 * * 0":
+            case "58 16 * * 1":
                 console.info("⏰ Weekly scheduler triggered");
                 await weeklyReport(env);
                 break;
