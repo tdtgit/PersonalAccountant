@@ -18,11 +18,19 @@ type Environment = {
     readonly OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT: string;
     readonly OPENAI_PROCESS_EMAIL_USER_PROMPT: string;
     readonly OPENAI_PROCESS_EMAIL_MODEL: string;
+    readonly OPENAI_OCR_MODEL?: string;
+    readonly OPENAI_ASSISTANT_MODEL?: string;
+    readonly OPENAI_ASSISTANT_ROUTER_MODEL?: string;
 
     readonly OPENAI_ASSISTANT_VECTORSTORE_ID: string;
     readonly OPENAI_ASSISTANT_ID: string;
     readonly OPENAI_ASSISTANT_SCHEDULED_PROMPT: string;
 };
+
+const DEFAULT_PROCESS_EMAIL_MODEL = "gpt-5.4-mini";
+const DEFAULT_OCR_MODEL = "gpt-5.4-mini";
+const DEFAULT_ASSISTANT_MODEL = "gpt-5.4-mini";
+const DEFAULT_ASSISTANT_ROUTER_MODEL = "gpt-5.4-mini";
 
 const app = new Hono<{ Bindings: Environment }>();
 app.use(logger())
@@ -140,6 +148,7 @@ const createAndProcessScheduledReport = async (env: Environment, reportType: 'ng
     });
     const run = await openai.beta.threads.createAndRun({
         assistant_id: env.OPENAI_ASSISTANT_ID,
+        model: env.OPENAI_ASSISTANT_MODEL || DEFAULT_ASSISTANT_MODEL,
         thread: { messages: [{ role: "user", content: prompt }] },
     });
 
@@ -169,6 +178,7 @@ const assistantQuestion = async (c, message) => {
 
     const run = await openai.beta.threads.createAndRun({
         assistant_id: c.env.OPENAI_ASSISTANT_ID,
+        model: c.env.OPENAI_ASSISTANT_MODEL || DEFAULT_ASSISTANT_MODEL,
         thread: { messages: [{ role: "user", content: message.text }] },
     });
 
@@ -226,7 +236,7 @@ const imageOcr = async (message, c) => {
     });
 
     const response = await openai.responses.create({
-        model: "gpt-4o-mini",
+        model: c.env.OPENAI_OCR_MODEL || DEFAULT_OCR_MODEL,
         input: [
             {
                 role: "user",
@@ -359,7 +369,7 @@ app.post('/assistant', async (c) => {
 
     console.log("🔫 /assistant/OpenAiResponse request:", message.text);
     const response = await openai.responses.create({
-        model: "gpt-4o",
+        model: c.env.OPENAI_ASSISTANT_ROUTER_MODEL || DEFAULT_ASSISTANT_ROUTER_MODEL,
         input: [
             {
                 role: "user",
@@ -488,7 +498,7 @@ const processTransaction = async (emailData: string, env: Environment) => {
             { role: "system", content: env.OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT },
             { role: "user", content: `${env.OPENAI_PROCESS_EMAIL_USER_PROMPT}\n\n${emailData}` },
         ],
-        model: env.OPENAI_PROCESS_EMAIL_MODEL,
+        model: env.OPENAI_PROCESS_EMAIL_MODEL || DEFAULT_PROCESS_EMAIL_MODEL,
         store: false,
     });
 
