@@ -12,7 +12,10 @@ enabled = true
 head_sampling_rate = 1
 
 [vars]
-OPENAI_PROCESS_EMAIL_MODEL = "gpt-4o-mini"
+OPENAI_PROCESS_EMAIL_MODEL = "gpt-5.4-mini"
+OPENAI_OCR_MODEL = "gpt-5.4-mini"
+OPENAI_ASSISTANT_MODEL = "gpt-5.4-mini"
+OPENAI_ASSISTANT_ROUTER_MODEL = "gpt-5.4-mini"
 
 OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT = """
 You act like an personal accountant, extracts email transaction details and summary them in JSON plain format, not markdown, not HTML, just plain JSON like below. No yapping.
