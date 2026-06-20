@@ -23,7 +23,6 @@ type Environment = {
     readonly OPENAI_ASSISTANT_ROUTER_MODEL?: string;
 
     readonly OPENAI_ASSISTANT_VECTORSTORE_ID: string;
-    readonly OPENAI_ASSISTANT_ID: string;
     readonly OPENAI_ASSISTANT_SCHEDULED_PROMPT: string;
 };
 
@@ -34,8 +33,6 @@ const DEFAULT_ASSISTANT_ROUTER_MODEL = "gpt-5.4-mini";
 
 const app = new Hono<{ Bindings: Environment }>();
 app.use(logger())
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const normalize = (text: string) =>
     text.replace(/[_\[\]~`>#\+\-=|{}.!]/g, '\\$&').replace(/【\d+:\d+†source】/g, '');
@@ -55,24 +52,26 @@ export const formatTransactionDetails = (details: any) =>
         ? `Transaction error: ${details.error}`
         : `💳 *Có giao dịch thẻ mới nè*\n\n${details.message}\n\n*Từ:* ${details.bank_name || "N/A"}\n*Ngày:* ${details.datetime || "N/A"}\n------------------`;
 
-/**
- * Waits for an AI provider thread to complete.
- *
- * @param {OpenAI} openai - The AI provider client instance
- * @param {string} threadId - The ID of the thread to wait for
- * @param {string} runId - The ID of the run to wait for
- * @returns {Promise<import("openai").ThreadRun>} The completed thread run
- */
-const waitForCompletion = async (openai: OpenAI, threadId: string, runId: string) => {
-    let run;
-    do {
-        run = await openai.beta.threads.runs.retrieve(threadId, runId);
-        if (["queued", "in_progress"].includes(run.status)) {
-            console.info("⏳ Waiting for thread completion:", threadId);
-            await sleep(500);
-        }
-    } while (["queued", "in_progress"].includes(run.status));
-    return run;
+const createOpenAIClient = (env: Environment) => new OpenAI({
+    project: env.OPENAI_PROJECT_ID,
+    apiKey: env.OPENAI_API_KEY,
+
+    // Your AI gateway, example:
+    // https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
+    baseURL: env.AI_API_GATEWAY || "https://api.openai.com/v1",
+});
+
+const askTransactionAssistant = async (env: Environment, input: string) => {
+    const response = await createOpenAIClient(env).responses.create({
+        model: env.OPENAI_ASSISTANT_MODEL || DEFAULT_ASSISTANT_MODEL,
+        input,
+        tools: [{
+            type: "file_search",
+            vector_store_ids: [env.OPENAI_ASSISTANT_VECTORSTORE_ID],
+        }],
+    });
+
+    return response.output_text;
 };
 
 /**
@@ -127,8 +126,7 @@ const formatDate = (reportType?: 'giờ' |'ngày' | 'tuần' | 'tháng') => {
 };
 
 /**
- * Creates a new thread with the given prompt and waits for its completion.
- * When the thread is completed, it sends a Telegram message with the content of the first message in the thread.
+ * Creates a report response from the configured transaction vector store and sends it to Telegram.
  *
  * @param {Environment} env - The environment variables.
  * @param {'ngày' | 'tuần' | 'tháng'} reportType - The type of report to process.
@@ -138,27 +136,9 @@ const createAndProcessScheduledReport = async (env: Environment, reportType: 'ng
     const prompt = env.OPENAI_ASSISTANT_SCHEDULED_PROMPT.replace("%DATETIME%", formatDate(reportType));
     console.info(`⏰ Processing report for prompt ${prompt}`)
 
-    const openai = new OpenAI({
-        project: env.OPENAI_PROJECT_ID,
-        apiKey: env.OPENAI_API_KEY,
+    const msgContent = await askTransactionAssistant(env, prompt);
+    console.info(`⏰ ${reportType.charAt(0).toUpperCase() + reportType.slice(1)} report processed:`, msgContent);
 
-        // Your AI gateway, example:
-        // https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
-        baseURL: env.AI_API_GATEWAY || "https://api.openai.com/v1",
-    });
-    const run = await openai.beta.threads.createAndRun({
-        assistant_id: env.OPENAI_ASSISTANT_ID,
-        model: env.OPENAI_ASSISTANT_MODEL || DEFAULT_ASSISTANT_MODEL,
-        thread: { messages: [{ role: "user", content: prompt }] },
-    });
-
-    console.info(`⏰ ${reportType.charAt(0).toUpperCase() + reportType.slice(1)} report thread created:`, run.thread_id);
-    await waitForCompletion(openai, run.thread_id, run.id);
-
-    const { data: threadMessages } = await openai.beta.threads.messages.list(run.thread_id, { run_id: run.id });
-    console.info(`⏰ ${reportType.charAt(0).toUpperCase() + reportType.slice(1)} message processed:`, threadMessages);
-
-    const msgContent = threadMessages[0]?.content[0]?.text?.value;
     const msg = `🥳 Báo cáo ${reportType} tới rồi đêi\n\n${msgContent}\n------------------`;
     await sendTelegramMessage(env, msg);
 
@@ -167,28 +147,9 @@ const createAndProcessScheduledReport = async (env: Environment, reportType: 'ng
 };
 
 const assistantQuestion = async (c, message) => {
-    const openai = new OpenAI({
-        project: c.env.OPENAI_PROJECT_ID,
-        apiKey: c.env.OPENAI_API_KEY,
+    const msg = await askTransactionAssistant(c.env, message.text);
+    console.info("🔫 Message processed successfully:", msg);
 
-        // Your AI gateway, example:
-        // https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
-        baseURL: c.env.AI_API_GATEWAY || "https://api.openai.com/v1",
-    });
-
-    const run = await openai.beta.threads.createAndRun({
-        assistant_id: c.env.OPENAI_ASSISTANT_ID,
-        model: c.env.OPENAI_ASSISTANT_MODEL || DEFAULT_ASSISTANT_MODEL,
-        thread: { messages: [{ role: "user", content: message.text }] },
-    });
-
-    console.info("🔫 Thread created successfully:", run.thread_id);
-    await waitForCompletion(openai, run.thread_id, run.id);
-
-    const { data: threadMessages } = await openai.beta.threads.messages.list(run.thread_id, { run_id: run.id });
-    console.info("🔫 Message processed successfully:", threadMessages);
-
-    const msg = threadMessages[0]?.content[0]?.text?.value;
     await sendTelegramMessage(c.env, msg, { reply_to_message_id: message.message_id });
 
     return c.text("Request completed");
@@ -226,16 +187,7 @@ const imageOcr = async (message, c) => {
 
     let imgB64 = await downloadTelegramFile(fileId, c.env);
 
-    const openai = new OpenAI({
-        project: c.env.OPENAI_PROJECT_ID,
-        apiKey: c.env.OPENAI_API_KEY,
-
-        // Your AI gateway, example:
-        // https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
-        baseURL: c.env.AI_API_GATEWAY || "https://api.openai.com/v1",
-    });
-
-    const response = await openai.responses.create({
+    const response = await createOpenAIClient(c.env).responses.create({
         model: c.env.OPENAI_OCR_MODEL || DEFAULT_OCR_MODEL,
         input: [
             {
@@ -245,6 +197,7 @@ const imageOcr = async (message, c) => {
                     {
                         type: "input_image",
                         image_url: imgB64,
+                        detail: "auto",
                     },
                 ],
             },
@@ -295,15 +248,6 @@ app.post('/assistant', async (c) => {
     if (message instanceof Response) {
         return message; // Stop execution if an error response is returned
     }
-
-    const openai = new OpenAI({
-        project: c.env.OPENAI_PROJECT_ID,
-        apiKey: c.env.OPENAI_API_KEY,
-
-        // Your AI gateway, example:
-        // https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
-        baseURL: c.env.AI_API_GATEWAY || "https://api.openai.com/v1",
-    });
 
     const available_functions = [{
         type: "function",
@@ -359,7 +303,7 @@ app.post('/assistant', async (c) => {
             additionalProperties: false
         },
         strict: false
-    }];
+    }] as const;
 
     if (message.text === undefined) {
         console.log("🔫 Processing case assistantOcr");
@@ -368,7 +312,7 @@ app.post('/assistant', async (c) => {
     }
 
     console.log("🔫 /assistant/OpenAiResponse request:", message.text);
-    const response = await openai.responses.create({
+    const response = await createOpenAIClient(c.env).responses.create({
         model: c.env.OPENAI_ASSISTANT_ROUTER_MODEL || DEFAULT_ASSISTANT_ROUTER_MODEL,
         input: [
             {
@@ -376,7 +320,7 @@ app.post('/assistant', async (c) => {
                 content: message.text
             }
         ],
-        tools: available_functions
+        tools: [...available_functions]
     });
     console.log("🔫 /assistant/OpenAiResponse response:", response);
 
@@ -463,7 +407,6 @@ const storeTransaction = async (details, env: Environment) => {
         headers: {
             'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
             'Content-Type': 'application/json',
-            'OpenAI-Beta': 'assistants=v2',
         },
         body: JSON.stringify({ file_id: fileId }),
     });
@@ -482,27 +425,16 @@ const notifyServices = async (details: any, env: Environment) => {
 }
 
 const processTransaction = async (emailData: string, env: Environment) => {
-    const openai = new OpenAI({
-        project: env.OPENAI_PROJECT_ID,
-        apiKey: env.OPENAI_API_KEY,
-
-        // Your AI gateway, example:
-        // https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai
-        baseURL: env.AI_API_GATEWAY || "https://api.openai.com/v1",
-    });
-
     console.log(`🤖 Processing email content: ${emailData}`);
 
-    const completion = await openai.chat.completions.create({
-        messages: [
-            { role: "system", content: env.OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT },
-            { role: "user", content: `${env.OPENAI_PROCESS_EMAIL_USER_PROMPT}\n\n${emailData}` },
-        ],
+    const response = await createOpenAIClient(env).responses.create({
         model: env.OPENAI_PROCESS_EMAIL_MODEL || DEFAULT_PROCESS_EMAIL_MODEL,
+        instructions: env.OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT,
+        input: `${env.OPENAI_PROCESS_EMAIL_USER_PROMPT}\n\n${emailData}`,
         store: false,
     });
 
-    const contentStr = completion.choices[0]?.message?.content?.replaceAll('`', '');
+    const contentStr = response.output_text.replaceAll('`', '');
     if (!contentStr) {
         console.error("🤖 Failed to parse transaction details");
         return;
