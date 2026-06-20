@@ -11,9 +11,10 @@ export type Environment = {
     readonly OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT: string;
     readonly OPENAI_PROCESS_EMAIL_USER_PROMPT: string;
     readonly OPENAI_PROCESS_EMAIL_MODEL: string;
-    readonly OPENAI_OCR_MODEL?: string;
-    readonly OPENAI_ASSISTANT_MODEL?: string;
-    readonly OPENAI_ASSISTANT_ROUTER_MODEL?: string;
+    readonly OPENAI_OCR_MODEL: string;
+    readonly OPENAI_ASSISTANT_MODEL: string;
+    readonly OPENAI_ASSISTANT_ROUTER_MODEL: string;
+    readonly OPENAI_ASSISTANT_RESPONSE_FORMAT_INSTRUCTIONS: string;
 
     readonly OPENAI_ASSISTANT_VECTORSTORE_ID: string;
     readonly OPENAI_ASSISTANT_SCHEDULED_PROMPT: string;

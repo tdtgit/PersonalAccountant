@@ -1,15 +1,14 @@
 import PostalMime from 'postal-mime';
 import { Buffer } from 'node:buffer';
-import { DEFAULT_PROCESS_EMAIL_MODEL } from './config';
-import { createOpenAIClient } from './openai';
-import { formatTransactionDetails, sendTelegramMessage } from './telegram';
-import type { Environment } from './types';
+import { createOpenAIClient } from '../services/openai';
+import { formatTransactionDetails, sendTelegramMessage } from '../services/telegram';
+import type { Environment } from '../types';
 
 export const processTransaction = async (emailData: string, env: Environment) => {
     console.log(`🤖 Processing email content: ${emailData}`);
 
     const response = await createOpenAIClient(env).responses.create({
-        model: env.OPENAI_PROCESS_EMAIL_MODEL || DEFAULT_PROCESS_EMAIL_MODEL,
+        model: env.OPENAI_PROCESS_EMAIL_MODEL,
         instructions: env.OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT,
         input: `${env.OPENAI_PROCESS_EMAIL_USER_PROMPT}\n\n${emailData}`,
         store: false,

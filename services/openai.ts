@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { Environment } from './types';
+import type { Environment } from '../types';
 
 export const createOpenAIClient = (env: Environment) => new OpenAI({
     project: env.OPENAI_PROJECT_ID,

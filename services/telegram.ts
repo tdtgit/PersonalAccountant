@@ -1,5 +1,5 @@
 import { Telegraf } from 'telegraf';
-import type { Environment } from './types';
+import type { Environment } from '../types';
 
 export const normalize = (text: string) =>
     text.replace(/【\d+:\d+†source】/g, '').replace(/[_\[\]\(\)~`>#\+\-=|{}.!]/g, '\\$&');

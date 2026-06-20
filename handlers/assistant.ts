@@ -1,15 +1,14 @@
 import { Buffer } from 'node:buffer';
-import { ASSISTANT_RESPONSE_FORMAT_INSTRUCTIONS, DEFAULT_ASSISTANT_MODEL, DEFAULT_ASSISTANT_ROUTER_MODEL, DEFAULT_OCR_MODEL } from './config';
-import { formatDate } from './date';
-import { createOpenAIClient } from './openai';
+import { formatDate } from '../utils/date';
+import { createOpenAIClient } from '../services/openai';
 import { processTransaction, storeTransaction, notifyServices } from './transactions';
-import { buildMessageWithReplyContext, sendTelegramMessage } from './telegram';
-import type { Environment } from './types';
+import { buildMessageWithReplyContext, sendTelegramMessage } from '../services/telegram';
+import type { Environment } from '../types';
 
 export const askTransactionAssistant = async (env: Environment, input: string) => {
     const response = await createOpenAIClient(env).responses.create({
-        model: env.OPENAI_ASSISTANT_MODEL || DEFAULT_ASSISTANT_MODEL,
-        instructions: `Answer personal finance questions using the transaction vector store. If the user reply includes a previous Telegram message, use it as context for the current request. Be concise and answer in Vietnamese unless the user asks otherwise. ${ASSISTANT_RESPONSE_FORMAT_INSTRUCTIONS}`,
+        model: env.OPENAI_ASSISTANT_MODEL,
+        instructions: `Answer personal finance questions using the transaction vector store. If the user reply includes a previous Telegram message, use it as context for the current request. Be concise and answer in Vietnamese unless the user asks otherwise. ${env.OPENAI_ASSISTANT_RESPONSE_FORMAT_INSTRUCTIONS}`,
         input,
         tools: [{
             type: "file_search",
@@ -72,7 +71,7 @@ const imageOcr = async (message, c) => {
     let imgB64 = await downloadTelegramFile(fileId, c.env);
 
     const response = await createOpenAIClient(c.env).responses.create({
-        model: c.env.OPENAI_OCR_MODEL || DEFAULT_OCR_MODEL,
+        model: c.env.OPENAI_OCR_MODEL,
         input: [
             {
                 role: "user",
@@ -191,7 +190,7 @@ export const handleAssistantRequest = async (c) => {
 
     console.log("🔫 /assistant/OpenAiResponse request:", message.text);
     const response = await createOpenAIClient(c.env).responses.create({
-        model: c.env.OPENAI_ASSISTANT_ROUTER_MODEL || DEFAULT_ASSISTANT_ROUTER_MODEL,
+        model: c.env.OPENAI_ASSISTANT_ROUTER_MODEL,
         input: [
             {
                 role: "user",

@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
-import { dailyReport, handleAssistantRequest, monthlyReport, weeklyReport } from './assistant';
-import { email } from './transactions';
+import { dailyReport, handleAssistantRequest, monthlyReport, weeklyReport } from './handlers/assistant';
+import { email } from './handlers/transactions';
 import type { Environment } from './types';
 
-export { buildMessageWithReplyContext, formatTransactionDetails, normalize, stripTelegramMarkdown } from './telegram';
+export { buildMessageWithReplyContext, formatTransactionDetails, normalize, stripTelegramMarkdown } from './services/telegram';
 
 const app = new Hono<{ Bindings: Environment }>();
 app.use(logger());

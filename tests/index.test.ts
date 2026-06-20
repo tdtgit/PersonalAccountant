@@ -43,11 +43,11 @@ const {
   formatTransactionDetails,
   normalize,
   stripTelegramMarkdown,
-} = await import("./index");
+} = await import("../index");
 const { createAndProcessScheduledReport, handleAssistantRequest, verifyAssistantRequest } =
-  await import("./assistant");
-const { formatDate } = await import("./date");
-const { email, processTransaction, storeTransaction } = await import("./transactions");
+  await import("../handlers/assistant");
+const { formatDate } = await import("../utils/date");
+const { email, processTransaction, storeTransaction } = await import("../handlers/transactions");
 
 const env = {
   TELEGRAM_CHAT_ID: "12345",
@@ -59,6 +59,10 @@ const env = {
   OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT: "Extract transaction JSON",
   OPENAI_PROCESS_EMAIL_USER_PROMPT: "Process this email",
   OPENAI_PROCESS_EMAIL_MODEL: "transaction-model",
+  OPENAI_OCR_MODEL: "ocr-model",
+  OPENAI_ASSISTANT_MODEL: "assistant-model",
+  OPENAI_ASSISTANT_ROUTER_MODEL: "router-model",
+  OPENAI_ASSISTANT_RESPONSE_FORMAT_INSTRUCTIONS: "Format for Telegram.",
   OPENAI_ASSISTANT_VECTORSTORE_ID: "vector-store-id",
   OPENAI_ASSISTANT_SCHEDULED_PROMPT: "Report for %DATETIME%",
 };
@@ -221,13 +225,15 @@ describe("handleAssistantRequest", () => {
     expect(await response.text()).toBe("Success");
     expect(openAiResponsesCreate).toHaveBeenCalledTimes(2);
     expect(openAiResponsesCreate.mock.calls[0][0]).toMatchObject({
-      model: "gpt-5.4-mini",
+      model: "router-model",
       input: [{ role: "user", content: "Hôm nay tiêu gì?" }],
     });
     expect(openAiResponsesCreate.mock.calls[1][0]).toMatchObject({
+      model: "assistant-model",
       input: "Hôm nay tiêu gì?",
       tools: [{ type: "file_search", vector_store_ids: [env.OPENAI_ASSISTANT_VECTORSTORE_ID] }],
     });
+    expect(openAiResponsesCreate.mock.calls[1][0].instructions).toContain("Format for Telegram.");
     expect(sendMessageMock).toHaveBeenCalledWith(
       env.TELEGRAM_CHAT_ID,
       expect.stringContaining("Bạn đã tiêu 100\\.000 VNĐ hôm nay\\."),
