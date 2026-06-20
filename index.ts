@@ -31,6 +31,15 @@ const DEFAULT_OCR_MODEL = "gpt-5.4-mini";
 const DEFAULT_ASSISTANT_MODEL = "gpt-5.4-mini";
 const DEFAULT_ASSISTANT_ROUTER_MODEL = "gpt-5.4-mini";
 
+const ASSISTANT_RESPONSE_FORMAT_INSTRUCTIONS = [
+    "Format answers for Telegram MarkdownV2.",
+    "Use *single asterisks* for bold labels/headings; do not use double-asterisk Markdown because Telegram MarkdownV2 bold uses single asterisks.",
+    "When listing multiple transactions, use short bullet points.",
+    "When the answer includes multiple dates, split the response into separate bold date sections.",
+    "When there are 3 or more transactions, include a bold total summary at the bottom.",
+    "When there are 10 or more transactions, do not use Markdown tables because Telegram MarkdownV2 does not support them reliably; use grouped date sections with bullet points instead.",
+].join(" ");
+
 const app = new Hono<{ Bindings: Environment }>();
 app.use(logger())
 
@@ -87,7 +96,7 @@ ${currentText}`,
 const askTransactionAssistant = async (env: Environment, input: string) => {
     const response = await createOpenAIClient(env).responses.create({
         model: env.OPENAI_ASSISTANT_MODEL || DEFAULT_ASSISTANT_MODEL,
-        instructions: "Answer personal finance questions using the transaction vector store. If the user reply includes a previous Telegram message, use it as context for the current request. Be concise and answer in Vietnamese unless the user asks otherwise.",
+        instructions: `Answer personal finance questions using the transaction vector store. If the user reply includes a previous Telegram message, use it as context for the current request. Be concise and answer in Vietnamese unless the user asks otherwise. ${ASSISTANT_RESPONSE_FORMAT_INSTRUCTIONS}`,
         input,
         tools: [{
             type: "file_search",

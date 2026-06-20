@@ -8,6 +8,10 @@ describe("normalize", () => {
 
     expect(output).toBe("Amount \\[100\\]\\_\\! from \\#shop\\.");
   });
+
+  it("preserves single-asterisk Telegram MarkdownV2 bold markers", () => {
+    expect(normalize("*Tổng cộng:* 100 AUD")).toBe("*Tổng cộng:* 100 AUD");
+  });
 });
 
 describe("formatTransactionDetails", () => {
