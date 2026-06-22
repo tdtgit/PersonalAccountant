@@ -247,6 +247,7 @@ describe("handleAssistantRequest", () => {
       model: "router-model",
       input: [{ role: "user", content: "Hôm nay tiêu gì?" }],
     });
+    expect(openAiResponsesCreate.mock.calls[0][0].instructions).toContain("Do not rely on fixed keywords only");
     expect(openAiResponsesCreate.mock.calls[1][0]).toMatchObject({
       model: "assistant-model",
       input: "Hôm nay tiêu gì?",
