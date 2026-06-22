@@ -105,6 +105,10 @@ describe("normalize", () => {
     expect(normalize("Paid (AUD)")).toBe("Paid \\(AUD\\)");
   });
 
+  it("escapes backslashes before Telegram MarkdownV2 characters", () => {
+    expect(normalize("Path C:\\Bills (June)")).toBe(String.raw`Path C:\\Bills \(June\)`);
+  });
+
   it("preserves single-asterisk Telegram MarkdownV2 bold markers", () => {
     expect(normalize("*Tổng cộng:* 100 AUD")).toBe("*Tổng cộng:* 100 AUD");
   });
@@ -113,6 +117,10 @@ describe("normalize", () => {
     expect(stripTelegramMarkdown("*Tổng cộng:* 100 AUD (ước tính).【12:3†source】")).toBe(
       "Tổng cộng: 100 AUD ước tính"
     );
+  });
+
+  it("strips backslashes in the plain-text fallback", () => {
+    expect(stripTelegramMarkdown("*Path* C:\\Bills (June)")).toBe("Path C:Bills June");
   });
 });
 
@@ -239,6 +247,7 @@ describe("handleAssistantRequest", () => {
       model: "router-model",
       input: [{ role: "user", content: "Hôm nay tiêu gì?" }],
     });
+    expect(openAiResponsesCreate.mock.calls[0][0].instructions).toContain("Do not rely on fixed keywords only");
     expect(openAiResponsesCreate.mock.calls[1][0]).toMatchObject({
       model: "assistant-model",
       input: "Hôm nay tiêu gì?",
@@ -296,7 +305,7 @@ describe("handleAssistantRequest", () => {
     expect(await response.text()).toBe("Success");
     expect(openAiResponsesCreate).toHaveBeenCalledTimes(2);
     expect(openAiResponsesCreate.mock.calls[1][0]).toMatchObject({
-      input: "Process this email\n\nCafe 50k",
+      input: "Process this email\n\nManual transaction request from Telegram user.\nParse the user message as a transaction to record. Extract the date, amount, currency, and description from the message when present.\nUser message: Cafe 50k",
       store: false,
     });
     expect(uploadedRequests.map((request) => request.url)).toEqual([
