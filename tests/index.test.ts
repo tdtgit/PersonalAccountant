@@ -44,8 +44,13 @@ const {
 	normalize,
 	stripTelegramMarkdown,
 } = await import('../index');
-const { createAndProcessScheduledReport, handleAssistantRequest, isManualTransactionText, verifyAssistantRequest } =
-	await import('../handlers/assistant');
+const {
+	buildManualTransactionInput,
+	createAndProcessScheduledReport,
+	handleAssistantRequest,
+	isManualTransactionText,
+	verifyAssistantRequest,
+} = await import('../handlers/assistant');
 const { formatDate } = await import('../utils/date');
 const { email, processTransaction, storeTransaction } = await import('../handlers/transactions');
 
@@ -155,6 +160,18 @@ describe('isManualTransactionText', () => {
 	});
 });
 
+describe('buildManualTransactionInput', () => {
+	it('turns add-transaction commands into explicit manual transaction input', () => {
+		expect(buildManualTransactionInput('Add vào giao dịch ngày 21/06/2026. "Đóng tiền khám bệnh cho Coca: 540,000đ"')).toBe(
+			[
+				'Manual transaction submitted by Telegram user.',
+				'Transaction date: 21/06/2026',
+				'Transaction details: Đóng tiền khám bệnh cho Coca: 540,000đ',
+			].join('\n'),
+		);
+	});
+});
+
 describe('formatDate', () => {
 	it('formats supported report periods', () => {
 		expect(formatDate('ngày')).toMatch(/^\d{1,2}\/\d{1,2}\/\d{4}$/);
@@ -243,7 +260,13 @@ describe('handleAssistantRequest', () => {
 		expect(openAiResponsesCreate).toHaveBeenCalledTimes(1);
 		expect(openAiResponsesCreate.mock.calls[0][0]).toMatchObject({
 			model: 'transaction-model',
-			input: 'Process this email\n\nAdd vào giao dịch ngày 21/06/2026: Đóng tiền khám bệnh cho Coca: 540,000đ',
+			input: [
+				'Process this email',
+				'',
+				'Manual transaction submitted by Telegram user.',
+				'Transaction date: 21/06/2026',
+				'Transaction details: Đóng tiền khám bệnh cho Coca: 540,000đ',
+			].join('\n'),
 			store: false,
 		});
 		expect(uploadedRequests.map((request) => request.url)).toEqual([
@@ -350,7 +373,7 @@ describe('handleAssistantRequest', () => {
 		expect(await response.text()).toBe('Success');
 		expect(openAiResponsesCreate).toHaveBeenCalledTimes(2);
 		expect(openAiResponsesCreate.mock.calls[1][0]).toMatchObject({
-			input: 'Process this email\n\nCafe 50k',
+			input: 'Process this email\n\nManual transaction submitted by Telegram user.\nTransaction details: Cafe 50k',
 			store: false,
 		});
 		expect(uploadedRequests.map((request) => request.url)).toEqual([

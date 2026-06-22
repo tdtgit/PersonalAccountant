@@ -104,9 +104,27 @@ const assistantOcr = async (message, c) => {
 	return '📬 Email processed successfully';
 };
 
+export const buildManualTransactionInput = (transaction: string) => {
+	const currentMessage = transaction.split('Current user message:\n').pop()?.trim() || transaction;
+	const transactionDate = /(?:ngày|date)\s+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i.exec(currentMessage)?.[1];
+	const transactionDetails = currentMessage
+		.replace(/^\s*(?:add|thêm|them)\s+(?:vào\s+)?(?:giao dịch|giao dich|transaction)\s*/i, '')
+		.replace(/^(?:ngày|date)\s+\d{1,2}[/-]\d{1,2}[/-]\d{2,4}[\s:.,-]*/i, '')
+		.replace(/^["“”'`]+|["“”'`]+$/g, '')
+		.trim();
+
+	return [
+		'Manual transaction submitted by Telegram user.',
+		transactionDate ? `Transaction date: ${transactionDate}` : undefined,
+		`Transaction details: ${transactionDetails || currentMessage}`,
+	]
+		.filter(Boolean)
+		.join('\n');
+};
+
 const assistantManualTransaction = async (transaction, env: Environment) => {
 	console.info('🔫 Processing manual transaction:', transaction);
-	const transactionDetails = await processTransaction(transaction, env);
+	const transactionDetails = await processTransaction(buildManualTransactionInput(transaction), env);
 
 	if (!transactionDetails) return 'Not okay';
 	await Promise.all([storeTransaction(transactionDetails, env), notifyServices(transactionDetails, env)]);
