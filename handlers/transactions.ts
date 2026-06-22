@@ -96,8 +96,8 @@ export const storeTransaction = async (details, env: Environment) => {
     console.info(`🤖 Add ${fileName} to Vector store successfully`);
 };
 
-export const notifyServices = async (details: any, env: Environment) => {
-    const message = formatTransactionDetails(details);
+export const notifyServices = async (details: any, env: Environment, headline?: string) => {
+    const message = formatTransactionDetails(details, headline);
     await sendTelegramMessage(env, message);
 };
 

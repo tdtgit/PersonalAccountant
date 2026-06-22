@@ -17,10 +17,10 @@ export const stripTelegramMarkdown = (text: string) =>
  * @param {string} [details.datetime="N/A"] - Datetime of the transaction.
  * @returns {string} Formatted string with transaction details or error message.
  */
-export const formatTransactionDetails = (details: any) =>
+export const formatTransactionDetails = (details: any, headline = '💳 *Có giao dịch thẻ mới nè*') =>
     details.error
         ? `Transaction error: ${details.error}`
-        : `💳 *Có giao dịch thẻ mới nè*\n\n${details.message}\n\n*Từ:* ${details.bank_name || "N/A"}\n*Ngày:* ${details.datetime || "N/A"}\n------------------`;
+        : `${headline}\n\n${details.message}\n\n*Từ:* ${details.bank_name || "N/A"}\n*Ngày:* ${details.datetime || "N/A"}\n------------------`;
 
 const getTelegramMessageContent = (message): string | null => {
     const content = message?.text || message?.caption;
@@ -47,8 +47,7 @@ export const buildMessageWithReplyContext = (message, fallbackText?: string) => 
  *
  * The message is normalized before sending (special characters are escaped and any "source" markers are removed).
  *
- * @param {Telegraf} bot - The Telegram bot instance.
- * @param {string} chatId - The chat ID to send the message to.
+ * @param {Environment} env - Runtime environment with Telegram credentials.
  * @param {string} message - The message to send.
  * @param {object} [options={}] - Additional options for the message (e.g. reply_to_message_id).
  * @returns {Promise<void>}

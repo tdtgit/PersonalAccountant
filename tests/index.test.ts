@@ -138,6 +138,13 @@ describe("formatTransactionDetails", () => {
     expect(result).toContain("*Từ:* N/A");
     expect(result).toContain("*Ngày:* N/A");
   });
+
+  it("allows a custom manual transaction headline", () => {
+    const result = formatTransactionDetails({ message: "Paid 100k" }, "✅ *Đã thêm giao dịch thủ công*");
+
+    expect(result).toStartWith("✅ *Đã thêm giao dịch thủ công*");
+    expect(result).toContain("Paid 100k");
+  });
 });
 
 describe("buildMessageWithReplyContext", () => {
@@ -314,7 +321,7 @@ describe("handleAssistantRequest", () => {
     ]);
     expect(sendMessageMock).toHaveBeenCalledWith(
       env.TELEGRAM_CHAT_ID,
-      expect.stringContaining("Cafe 50k"),
+      expect.stringContaining("Đã thêm giao dịch thủ công"),
       expect.objectContaining({ parse_mode: "MarkdownV2" })
     );
   });
