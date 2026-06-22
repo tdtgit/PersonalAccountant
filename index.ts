@@ -7,7 +7,7 @@ import { dailyReport, handleAssistantRequest, monthlyReport, weeklyReport } from
 import { email as processEmail } from './handlers/transactions';
 import type { Environment } from './types';
 
-export { buildMessageWithReplyContext, formatCurrencyAmounts, formatTransactionDetails, normalize, stripTelegramMarkdown } from './services/telegram';
+export { buildMessageWithReplyContext, convertCurrencyAmountsToVnd, formatCurrencyAmounts, formatTransactionDetails, normalize, stripTelegramMarkdown } from './services/telegram';
 
 const app = new Hono<{ Bindings: Environment }>();
 app.use('*', secureHeaders());

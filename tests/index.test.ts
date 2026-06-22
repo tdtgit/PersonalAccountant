@@ -40,6 +40,7 @@ mock.module("postal-mime", () => ({
 const {
   buildMessageWithReplyContext,
   default: worker,
+  convertCurrencyAmountsToVnd,
   formatCurrencyAmounts,
   formatTransactionDetails,
   normalize,
@@ -129,14 +130,39 @@ describe("normalize", () => {
 describe("formatCurrencyAmounts", () => {
   it("formats ungrouped VND amounts with Vietnamese thousands separators", () => {
     expect(formatCurrencyAmounts("21:23 — 385934 VND — POS; Tổng cộng: 439934 VNĐ")).toBe(
-      "21:23 — 385.934 VNĐ — POS; Tổng cộng: 439.934 VNĐ"
+      "21:23 — 385.934đ — POS; Tổng cộng: 439.934đ"
     );
   });
 
   it("keeps already grouped VND amounts stable", () => {
     expect(formatCurrencyAmounts("Bạn đã tiêu 120.000 VNĐ và 54.000 VND")).toBe(
-      "Bạn đã tiêu 120.000 VNĐ và 54.000 VNĐ"
+      "Bạn đã tiêu 120.000đ và 54.000đ"
     );
+  });
+
+  it("uses đ for existing VND shorthand amounts", () => {
+    expect(formatCurrencyAmounts("Đóng tiền khám bệnh cho Coca: 540,000đ")).toBe(
+      "Đóng tiền khám bệnh cho Coca: 540.000đ"
+    );
+  });
+});
+
+describe("convertCurrencyAmountsToVnd", () => {
+  it("adds VND conversions for foreign currency amounts", async () => {
+    fetchHandler = async (input) => {
+      expect(String(input)).toBe("https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json");
+      return Response.json({ usd: { vnd: 25000 } });
+    };
+
+    await expect(convertCurrencyAmountsToVnd("- 18/12/2025 — 8,99 USD cho dịch vụ máy chủ ảo Rackspace.")).resolves.toBe(
+      "- 18/12/2025 — 8,99 USD (224.750đ) cho dịch vụ máy chủ ảo Rackspace."
+    );
+  });
+
+  it("keeps foreign currency text unchanged when exchange lookup fails", async () => {
+    fetchHandler = async () => new Response(null, { status: 503 });
+
+    await expect(convertCurrencyAmountsToVnd("Paid 12 USD")).resolves.toBe("Paid 12 USD");
   });
 });
 
@@ -279,7 +305,7 @@ describe("handleAssistantRequest", () => {
     expect(openAiResponsesCreate.mock.calls[1][0].instructions).toContain("Format for Telegram.");
     expect(sendMessageMock).toHaveBeenCalledWith(
       env.TELEGRAM_CHAT_ID,
-      expect.stringContaining("Bạn đã tiêu 100\\.000 VNĐ hôm nay\\."),
+      expect.stringContaining("Bạn đã tiêu 100\\.000đ hôm nay\\."),
       expect.objectContaining({ reply_to_message_id: 77, parse_mode: "MarkdownV2" })
     );
   });
@@ -596,7 +622,7 @@ describe("sendTelegramMessage", () => {
 
     expect(await response.text()).toBe("Success");
     expect(sendMessageMock).toHaveBeenCalledTimes(2);
-    expect(sendMessageMock.mock.calls[0][1]).toBe("*Tổng cộng:* 439\\.934 VNĐ \\(ước tính\\)\\.");
-    expect(sendMessageMock.mock.calls[1][1]).toBe("Tổng cộng: 439.934 VNĐ ước tính");
+    expect(sendMessageMock.mock.calls[0][1]).toBe("*Tổng cộng:* 439\\.934đ \\(ước tính\\)\\.");
+    expect(sendMessageMock.mock.calls[1][1]).toBe("Tổng cộng: 439.934đ ước tính");
   });
 });
