@@ -1,6 +1,23 @@
 import { Telegraf } from 'telegraf';
 import type { Environment } from '../types';
 
+const formatVietnameseNumber = (value: string) => {
+    const normalizedValue = value.replace(/\./g, '').replace(',', '.');
+    const parsedValue = Number(normalizedValue);
+
+    if (!Number.isFinite(parsedValue)) return value;
+
+    return new Intl.NumberFormat('vi-VN', {
+        maximumFractionDigits: Number.isInteger(parsedValue) ? 0 : 2,
+    }).format(parsedValue);
+};
+
+export const formatCurrencyAmounts = (text: string) =>
+    text.replace(/(?<![\d.,])([+-]?\d{1,15}(?:[.,]\d{1,3})?)\s*(VND|VNĐ)(?=$|[^\p{L}\p{N}_])/giu, (_match, amount: string) => {
+        const formattedAmount = formatVietnameseNumber(amount);
+        return `${formattedAmount} VNĐ`;
+    });
+
 export const normalize = (text: string) =>
     text.replace(/【\d+:\d+†source】/g, '').replace(/[\\_\[\]\(\)~`>#\+\-=|{}.!]/g, '\\$&');
 
@@ -54,13 +71,14 @@ export const buildMessageWithReplyContext = (message, fallbackText?: string) => 
  */
 export const sendTelegramMessage = async (env: Environment, message: string, options = {}) => {
     const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
+    const formattedMessage = formatCurrencyAmounts(message);
 
     try {
-        await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, normalize(message), { parse_mode: "MarkdownV2", ...options });
+        await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, normalize(formattedMessage), { parse_mode: "MarkdownV2", ...options });
         console.info("🔫 Telegram response sent successfully");
     } catch (error) {
         console.warn("⚠️ Telegram MarkdownV2 response failed, retrying as plain text", error);
-        await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, stripTelegramMarkdown(message), options);
+        await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, formatCurrencyAmounts(stripTelegramMarkdown(formattedMessage)), options);
         console.info("🔫 Telegram plain-text fallback response sent successfully");
     }
 };
