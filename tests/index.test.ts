@@ -304,7 +304,7 @@ describe("handleAssistantRequest", () => {
     expect(await response.text()).toBe("Success");
     expect(openAiResponsesCreate).toHaveBeenCalledTimes(2);
     expect(openAiResponsesCreate.mock.calls[1][0]).toMatchObject({
-      input: "Process this email\n\nCafe 50k",
+      input: "Process this email\n\nManual transaction request from Telegram user.\nParse the user message as a transaction to record. Extract the date, amount, currency, and description from the message when present.\nUser message: Cafe 50k",
       store: false,
     });
     expect(uploadedRequests.map((request) => request.url)).toEqual([
