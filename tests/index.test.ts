@@ -44,13 +44,8 @@ const {
 	normalize,
 	stripTelegramMarkdown,
 } = await import('../index');
-const {
-	buildManualTransactionInput,
-	createAndProcessScheduledReport,
-	handleAssistantRequest,
-	isManualTransactionText,
-	verifyAssistantRequest,
-} = await import('../handlers/assistant');
+const { buildManualTransactionInput, createAndProcessScheduledReport, handleAssistantRequest, verifyAssistantRequest } =
+	await import('../handlers/assistant');
 const { formatDate } = await import('../utils/date');
 const { email, processTransaction, storeTransaction } = await import('../handlers/transactions');
 
@@ -151,22 +146,13 @@ describe('buildMessageWithReplyContext', () => {
 	});
 });
 
-describe('isManualTransactionText', () => {
-	it('identifies manual transaction add commands with amounts', () => {
-		expect(isManualTransactionText('Add vào giao dịch ngày 21/06/2026: Đóng tiền khám bệnh cho Coca: 540,000đ')).toBe(true);
-		expect(isManualTransactionText('Thêm giao dịch ăn trưa 80k')).toBe(true);
-		expect(isManualTransactionText('Tháng này tốn bao nhiêu?')).toBe(false);
-		expect(isManualTransactionText('Thêm giao dịch này giúp mình nhé')).toBe(false);
-	});
-});
-
 describe('buildManualTransactionInput', () => {
-	it('turns add-transaction commands into explicit manual transaction input', () => {
+	it('wraps natural-language transaction requests without keyword stripping', () => {
 		expect(buildManualTransactionInput('Add vào giao dịch ngày 21/06/2026. "Đóng tiền khám bệnh cho Coca: 540,000đ"')).toBe(
 			[
-				'Manual transaction submitted by Telegram user.',
-				'Transaction date: 21/06/2026',
-				'Transaction details: Đóng tiền khám bệnh cho Coca: 540,000đ',
+				'Manual transaction request from Telegram user.',
+				'Parse the user message as a transaction to record. Extract the date, amount, currency, and description from the message when present.',
+				'User message: Add vào giao dịch ngày 21/06/2026. "Đóng tiền khám bệnh cho Coca: 540,000đ"',
 			].join('\n'),
 		);
 	});
@@ -222,7 +208,7 @@ describe('verifyAssistantRequest', () => {
 });
 
 describe('handleAssistantRequest', () => {
-	it('detects add-transaction text without waiting for the router function call', async () => {
+	it('lets the router model decide that natural language text should add a transaction', async () => {
 		const uploadedRequests: Array<{ url: string; init?: RequestInit }> = [];
 		fetchHandler = async (input, init) => {
 			const url = String(input);
@@ -234,6 +220,17 @@ describe('handleAssistantRequest', () => {
 			return new Response(null, { status: 404 });
 		};
 		openAiResponses = [
+			{
+				output: [
+					{
+						type: 'function_call',
+						name: 'assistantManualTransaction',
+						arguments: JSON.stringify({
+							transaction: 'Tui đã thêm giao dịch khám bệnh cho Coca vào ngày 21/06/2026 chưa? Nếu chưa hãy note vào, số tiền là 540k',
+						}),
+					},
+				],
+			},
 			{
 				output_text: JSON.stringify({
 					result: 'success',
@@ -250,22 +247,32 @@ describe('handleAssistantRequest', () => {
 					message: {
 						from: { id: env.TELEGRAM_CHAT_ID },
 						message_id: 76,
-						text: 'Add vào giao dịch ngày 21/06/2026: Đóng tiền khám bệnh cho Coca: 540,000đ',
+						text: 'Tui đã thêm giao dịch khám bệnh cho Coca vào ngày 21/06/2026 chưa? Nếu chưa hãy note vào, số tiền là 540k',
 					},
 				},
 			}),
 		);
 
 		expect(await response.text()).toBe('Success');
-		expect(openAiResponsesCreate).toHaveBeenCalledTimes(1);
+		expect(openAiResponsesCreate).toHaveBeenCalledTimes(2);
 		expect(openAiResponsesCreate.mock.calls[0][0]).toMatchObject({
+			model: 'router-model',
+			input: [
+				{
+					role: 'user',
+					content: 'Tui đã thêm giao dịch khám bệnh cho Coca vào ngày 21/06/2026 chưa? Nếu chưa hãy note vào, số tiền là 540k',
+				},
+			],
+		});
+		expect(openAiResponsesCreate.mock.calls[0][0].instructions).toContain('Do not rely on fixed keywords only');
+		expect(openAiResponsesCreate.mock.calls[1][0]).toMatchObject({
 			model: 'transaction-model',
 			input: [
 				'Process this email',
 				'',
-				'Manual transaction submitted by Telegram user.',
-				'Transaction date: 21/06/2026',
-				'Transaction details: Đóng tiền khám bệnh cho Coca: 540,000đ',
+				'Manual transaction request from Telegram user.',
+				'Parse the user message as a transaction to record. Extract the date, amount, currency, and description from the message when present.',
+				'User message: Tui đã thêm giao dịch khám bệnh cho Coca vào ngày 21/06/2026 chưa? Nếu chưa hãy note vào, số tiền là 540k',
 			].join('\n'),
 			store: false,
 		});
@@ -373,7 +380,13 @@ describe('handleAssistantRequest', () => {
 		expect(await response.text()).toBe('Success');
 		expect(openAiResponsesCreate).toHaveBeenCalledTimes(2);
 		expect(openAiResponsesCreate.mock.calls[1][0]).toMatchObject({
-			input: 'Process this email\n\nManual transaction submitted by Telegram user.\nTransaction details: Cafe 50k',
+			input: [
+				'Process this email',
+				'',
+				'Manual transaction request from Telegram user.',
+				'Parse the user message as a transaction to record. Extract the date, amount, currency, and description from the message when present.',
+				'User message: Cafe 50k',
+			].join('\n'),
 			store: false,
 		});
 		expect(uploadedRequests.map((request) => request.url)).toEqual([

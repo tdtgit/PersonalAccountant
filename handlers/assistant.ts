@@ -106,20 +106,12 @@ const assistantOcr = async (message, c) => {
 
 export const buildManualTransactionInput = (transaction: string) => {
 	const currentMessage = transaction.split('Current user message:\n').pop()?.trim() || transaction;
-	const transactionDate = /(?:ngày|date)\s+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i.exec(currentMessage)?.[1];
-	const transactionDetails = currentMessage
-		.replace(/^\s*(?:add|thêm|them)\s+(?:vào\s+)?(?:giao dịch|giao dich|transaction)\s*/i, '')
-		.replace(/^(?:ngày|date)\s+\d{1,2}[/-]\d{1,2}[/-]\d{2,4}[\s:.,-]*/i, '')
-		.replace(/^["“”'`]+|["“”'`]+$/g, '')
-		.trim();
 
 	return [
-		'Manual transaction submitted by Telegram user.',
-		transactionDate ? `Transaction date: ${transactionDate}` : undefined,
-		`Transaction details: ${transactionDetails || currentMessage}`,
-	]
-		.filter(Boolean)
-		.join('\n');
+		'Manual transaction request from Telegram user.',
+		'Parse the user message as a transaction to record. Extract the date, amount, currency, and description from the message when present.',
+		`User message: ${currentMessage}`,
+	].join('\n');
 };
 
 const assistantManualTransaction = async (transaction, env: Environment) => {
@@ -129,16 +121,6 @@ const assistantManualTransaction = async (transaction, env: Environment) => {
 	if (!transactionDetails) return 'Not okay';
 	await Promise.all([storeTransaction(transactionDetails, env), notifyServices(transactionDetails, env)]);
 	return '📬 Email processed successfully';
-};
-
-export const isManualTransactionText = (text?: string) => {
-	if (!text) return false;
-
-	const normalizedText = text.trim().toLowerCase();
-	const hasAddTransactionIntent = /\b(add|thêm|them)\b.*\b(giao dịch|giao dich|transaction)\b/.test(normalizedText);
-	const hasAmount = /(?:\d[\d.,\s]*\s*(?:đ|d|vnd|vnđ|k)|(?:đ|d|vnd|vnđ)\s*\d)/i.test(text);
-
-	return hasAddTransactionIntent && hasAmount;
 };
 
 export const verifyAssistantRequest = async (c) => {
@@ -169,7 +151,7 @@ export const handleAssistantRequest = async (c) => {
 		{
 			type: 'function',
 			name: 'assistantQuestion',
-			description: 'Get information of transactions when asked.',
+			description: 'Answer questions about existing transactions, summaries, totals, or whether something has already been recorded.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -203,7 +185,8 @@ export const handleAssistantRequest = async (c) => {
 		{
 			type: 'function',
 			name: 'assistantManualTransaction',
-			description: 'Add a transaction manually when user defined.',
+			description:
+				'Record a manual transaction when the user asks to add, note, save, or record spending. Use this even when the message is phrased conditionally, for example "if it has not been added yet, note it", as long as the user provides transaction details.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -225,15 +208,16 @@ export const handleAssistantRequest = async (c) => {
 		return c.text('Success');
 	}
 
-	if (isManualTransactionText(message.text)) {
-		console.log('🔫 Processing case assistantManualTransaction by text heuristic');
-		await assistantManualTransaction(buildMessageWithReplyContext(message), c.env);
-		return c.text('Success');
-	}
-
 	console.log('🔫 /assistant/OpenAiResponse request:', message.text);
 	const response = await createOpenAIClient(c.env).responses.create({
 		model: c.env.OPENAI_ASSISTANT_ROUTER_MODEL,
+		instructions: [
+			'You are a Telegram finance assistant router. Decide which tool to call from the user message.',
+			'Call assistantQuestion when the user only asks for information about existing transactions, totals, reports, or whether a transaction already exists.',
+			'Call assistantManualTransaction when the user asks to add, note, save, or record a transaction and provides transaction details such as amount, date, merchant, person, or description.',
+			'If the message both asks whether a transaction exists and asks to add/note/save it if missing, treat it as a manual transaction request and pass the full user message to assistantManualTransaction.',
+			'Do not rely on fixed keywords only; infer the user intent from the whole message.',
+		].join('\n'),
 		input: [
 			{
 				role: 'user',
