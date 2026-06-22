@@ -105,6 +105,10 @@ describe("normalize", () => {
     expect(normalize("Paid (AUD)")).toBe("Paid \\(AUD\\)");
   });
 
+  it("escapes backslashes before Telegram MarkdownV2 characters", () => {
+    expect(normalize("Path C:\\Bills (June)")).toBe(String.raw`Path C:\\Bills \(June\)`);
+  });
+
   it("preserves single-asterisk Telegram MarkdownV2 bold markers", () => {
     expect(normalize("*Tổng cộng:* 100 AUD")).toBe("*Tổng cộng:* 100 AUD");
   });
@@ -113,6 +117,10 @@ describe("normalize", () => {
     expect(stripTelegramMarkdown("*Tổng cộng:* 100 AUD (ước tính).【12:3†source】")).toBe(
       "Tổng cộng: 100 AUD ước tính"
     );
+  });
+
+  it("strips backslashes in the plain-text fallback", () => {
+    expect(stripTelegramMarkdown("*Path* C:\\Bills (June)")).toBe("Path C:Bills June");
   });
 });
 
