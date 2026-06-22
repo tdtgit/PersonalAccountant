@@ -53,10 +53,8 @@ export const buildMessageWithReplyContext = (message, fallbackText?: string) => 
  * @param {object} [options={}] - Additional options for the message (e.g. reply_to_message_id).
  * @returns {Promise<void>}
  */
-let bot: Telegraf | null = null;
-
 export const sendTelegramMessage = async (env: Environment, message: string, options = {}) => {
-    if (!bot) bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
+    const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
 
     try {
         await bot.telegram.sendMessage(env.TELEGRAM_CHAT_ID, normalize(message), { parse_mode: "MarkdownV2", ...options });
