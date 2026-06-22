@@ -4,17 +4,33 @@ import { createOpenAIClient } from '../services/openai';
 import { formatTransactionDetails, sendTelegramMessage } from '../services/telegram';
 import type { Environment } from '../types';
 
-export const processTransaction = async (emailData: string, env: Environment) => {
-    console.log(`🤖 Processing email content: ${emailData}`);
+export const processTransaction = async (emailData: string, env: Environment, source: 'email' | 'manual' | 'ocr' = 'email') => {
+    console.log(`🤖 Processing ${source} content: ${emailData}`);
+
+    const sourceInstructions = source === 'manual'
+        ? [
+            env.OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT,
+            'The input is a Telegram message where the user is explicitly asking to record a personal expense/transaction, not an email.',
+            'Do not reject it just because it is not a bank or receipt email. If the message contains a plausible amount plus merchant/person/description/date, return a successful transaction JSON using the same schema.',
+            'Only return {"result":"failed"} when the Telegram message does not contain enough transaction details to record.',
+        ].join('\n')
+        : env.OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT;
+
+    const sourcePrompt = source === 'manual'
+        ? [
+            env.OPENAI_PROCESS_EMAIL_USER_PROMPT,
+            'Process this manual Telegram transaction request as a transaction record.',
+        ].join('\n')
+        : env.OPENAI_PROCESS_EMAIL_USER_PROMPT;
 
     const response = await createOpenAIClient(env).responses.create({
         model: env.OPENAI_PROCESS_EMAIL_MODEL,
-        instructions: env.OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT,
-        input: `${env.OPENAI_PROCESS_EMAIL_USER_PROMPT}\n\n${emailData}`,
+        instructions: sourceInstructions,
+        input: `${sourcePrompt}\n\n${emailData}`,
         store: false,
     });
 
-    const contentStr = response.output_text.replaceAll('`', '');
+    const contentStr = response.output_text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
     if (!contentStr) {
         console.error("🤖 Failed to parse transaction details");
         return;
@@ -31,7 +47,7 @@ export const processTransaction = async (emailData: string, env: Environment) =>
         return;
     }
 
-    console.info(`🤖 Processed email content: ${JSON.stringify(content)}`);
+    console.info(`🤖 Processed ${source} content: ${JSON.stringify(content)}`);
     return content;
 };
 
