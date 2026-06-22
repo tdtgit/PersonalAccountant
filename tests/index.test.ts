@@ -138,6 +138,13 @@ describe("formatTransactionDetails", () => {
     expect(result).toContain("*Từ:* N/A");
     expect(result).toContain("*Ngày:* N/A");
   });
+
+  it("allows a custom manual transaction headline", () => {
+    const result = formatTransactionDetails({ message: "Paid 100k" }, "✅ *Đã thêm giao dịch thủ công*");
+
+    expect(result).toStartWith("✅ *Đã thêm giao dịch thủ công*");
+    expect(result).toContain("Paid 100k");
+  });
 });
 
 describe("buildMessageWithReplyContext", () => {
@@ -305,7 +312,7 @@ describe("handleAssistantRequest", () => {
     expect(await response.text()).toBe("Success");
     expect(openAiResponsesCreate).toHaveBeenCalledTimes(2);
     expect(openAiResponsesCreate.mock.calls[1][0]).toMatchObject({
-      input: "Process this email\n\nManual transaction request from Telegram user.\nParse the user message as a transaction to record. Extract the date, amount, currency, and description from the message when present.\nUser message: Cafe 50k",
+      input: "Process this email\nProcess this manual Telegram transaction request as a transaction record.\n\nManual transaction request from Telegram user.\nParse the user message as a transaction to record. Extract the date, amount, currency, and description from the message when present.\nUser message: Cafe 50k",
       store: false,
     });
     expect(uploadedRequests.map((request) => request.url)).toEqual([
@@ -314,7 +321,7 @@ describe("handleAssistantRequest", () => {
     ]);
     expect(sendMessageMock).toHaveBeenCalledWith(
       env.TELEGRAM_CHAT_ID,
-      expect.stringContaining("Cafe 50k"),
+      expect.stringContaining("Đã thêm giao dịch thủ công"),
       expect.objectContaining({ parse_mode: "MarkdownV2" })
     );
   });

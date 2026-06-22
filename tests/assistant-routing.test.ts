@@ -140,6 +140,7 @@ describe('assistant router manual transaction intent', () => {
 			model: 'transaction-model',
 			input: [
 				'Process this email',
+				'Process this manual Telegram transaction request as a transaction record.',
 				'',
 				'Manual transaction request from Telegram user.',
 				'Parse the user message as a transaction to record. Extract the date, amount, currency, and description from the message when present.',

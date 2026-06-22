@@ -116,10 +116,10 @@ export const buildManualTransactionInput = (transaction: string) => {
 
 const assistantManualTransaction = async (transaction, env: Environment) => {
 	console.info('🔫 Processing manual transaction:', transaction);
-	const transactionDetails = await processTransaction(buildManualTransactionInput(transaction), env);
+	const transactionDetails = await processTransaction(buildManualTransactionInput(transaction), env, 'manual');
 
 	if (!transactionDetails) return 'Not okay';
-	await Promise.all([storeTransaction(transactionDetails, env), notifyServices(transactionDetails, env)]);
+	await Promise.all([storeTransaction(transactionDetails, env), notifyServices(transactionDetails, env, '✅ *Đã thêm giao dịch thủ công*')]);
 	return '📬 Email processed successfully';
 };
 
