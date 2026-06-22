@@ -105,8 +105,8 @@ describe("normalize", () => {
     expect(normalize("Paid (AUD)")).toBe("Paid \\(AUD\\)");
   });
 
-  it("escapes backslashes before Telegram MarkdownV2 characters", () => {
-    expect(normalize("Path C:\\Bills (June)")).toBe(String.raw`Path C:\\Bills \(June\)`);
+  it("escapes backslashes before escaping Telegram MarkdownV2 characters", () => {
+    expect(normalize(String.raw`C:\Transactions\[June]`)).toBe(String.raw`C:\\Transactions\\\[June\]`);
   });
 
   it("preserves single-asterisk Telegram MarkdownV2 bold markers", () => {
@@ -119,8 +119,8 @@ describe("normalize", () => {
     );
   });
 
-  it("strips backslashes in the plain-text fallback", () => {
-    expect(stripTelegramMarkdown("*Path* C:\\Bills (June)")).toBe("Path C:Bills June");
+  it("strips backslashes for the plain-text fallback", () => {
+    expect(stripTelegramMarkdown(String.raw`C:\Transactions\[June]`)).toBe("C:TransactionsJune");
   });
 });
 
