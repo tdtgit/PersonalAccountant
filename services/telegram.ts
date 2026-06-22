@@ -2,10 +2,10 @@ import { Telegraf } from 'telegraf';
 import type { Environment } from '../types';
 
 export const normalize = (text: string) =>
-    text.replace(/【\d+:\d+†source】/g, '').replace(/[_\[\]\(\)~`>#\+\-=|{}.!]/g, '\\$&');
+    text.replace(/【\d+:\d+†source】/g, '').replace(/[\\_\[\]\(\)~`>#\+\-=|{}.!]/g, '\\$&');
 
 export const stripTelegramMarkdown = (text: string) =>
-    text.replace(/【\d+:\d+†source】/g, '').replace(/[\*_\[\]\(\)~`>#\+\-=|{}.!]/g, '');
+    text.replace(/【\d+:\d+†source】/g, '').replace(/[\\\*_\[\]\(\)~`>#\+\-=|{}.!]/g, '');
 
 /**
  * Formats transaction details into a readable string for Telegram notification.
