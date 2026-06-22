@@ -40,6 +40,7 @@ mock.module("postal-mime", () => ({
 const {
   buildMessageWithReplyContext,
   default: worker,
+  formatCurrencyAmounts,
   formatTransactionDetails,
   normalize,
   stripTelegramMarkdown,
@@ -121,6 +122,21 @@ describe("normalize", () => {
 
   it("strips backslashes for the plain-text fallback", () => {
     expect(stripTelegramMarkdown(String.raw`C:\Transactions\[June]`)).toBe("C:TransactionsJune");
+  });
+});
+
+
+describe("formatCurrencyAmounts", () => {
+  it("formats ungrouped VND amounts with Vietnamese thousands separators", () => {
+    expect(formatCurrencyAmounts("21:23 — 385934 VND — POS; Tổng cộng: 439934 VNĐ")).toBe(
+      "21:23 — 385.934 VNĐ — POS; Tổng cộng: 439.934 VNĐ"
+    );
+  });
+
+  it("keeps already grouped VND amounts stable", () => {
+    expect(formatCurrencyAmounts("Bạn đã tiêu 120.000 VNĐ và 54.000 VND")).toBe(
+      "Bạn đã tiêu 120.000 VNĐ và 54.000 VNĐ"
+    );
   });
 });
 
@@ -561,7 +577,7 @@ describe("sendTelegramMessage", () => {
         throw new Error("Markdown rejected");
       })
       .mockImplementationOnce(async () => undefined);
-    openAiResponses = [{ output: [] }, { output_text: "*Tổng cộng:* 100 AUD (ước tính)." }];
+    openAiResponses = [{ output: [] }, { output_text: "*Tổng cộng:* 439934 VND (ước tính)." }];
 
     const response = await worker.fetch(
       new Request("https://worker.example/assistant", {
@@ -580,7 +596,7 @@ describe("sendTelegramMessage", () => {
 
     expect(await response.text()).toBe("Success");
     expect(sendMessageMock).toHaveBeenCalledTimes(2);
-    expect(sendMessageMock.mock.calls[0][1]).toBe("*Tổng cộng:* 100 AUD \\(ước tính\\)\\.");
-    expect(sendMessageMock.mock.calls[1][1]).toBe("Tổng cộng: 100 AUD ước tính");
+    expect(sendMessageMock.mock.calls[0][1]).toBe("*Tổng cộng:* 439\\.934 VNĐ \\(ước tính\\)\\.");
+    expect(sendMessageMock.mock.calls[1][1]).toBe("Tổng cộng: 439.934 VNĐ ước tính");
   });
 });
