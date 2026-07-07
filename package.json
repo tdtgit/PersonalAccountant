@@ -11,11 +11,11 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@types/node": "^26.0.1",
-    "wrangler": "^4.106.0"
+    "@types/node": "^26.1.0",
+    "wrangler": "^4.107.1"
   },
   "dependencies": {
-    "hono": "^4.12.27",
+    "hono": "^4.12.28",
     "openai": "^6.45.0",
     "postal-mime": "^2.7.5",
     "telegraf": "^4.16.3"
