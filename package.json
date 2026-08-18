@@ -12,12 +12,12 @@
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "wrangler": "^4.120.0"
+    "wrangler": "^4.123.0"
   },
   "dependencies": {
-    "hono": "^4.13.1",
+    "hono": "^4.13.2",
     "openai": "^7.4.0",
-    "postal-mime": "^2.7.6",
+    "postal-mime": "^3.0.0",
     "telegraf": "^4.16.3"
   }
 }
