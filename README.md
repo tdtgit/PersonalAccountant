@@ -64,10 +64,10 @@ The application requires the following environment variables:
 | `OPENAI_PROCESS_EMAIL_SYSTEM_PROMPT`    | System message to use for email processing in OpenAI.                    | Yes      | -       |
 | `OPENAI_PROCESS_EMAIL_USER_PROMPT`      | User prompt template for email processing.                               | Yes      | -       |
 | `OPENAI_ASSISTANT_SCHEDULED_PROMPT` | User prompt for daily transaction summary | Yes | - |
-| `OPENAI_PROCESS_EMAIL_MODEL`     | The model used by OpenAI for email/manual transaction processing.         | Yes      | `gpt-5.4-mini` |
-| `OPENAI_OCR_MODEL`               | The vision model used to extract receipt text from Telegram images.       | No       | `gpt-5.4-mini` |
-| `OPENAI_ASSISTANT_MODEL`         | The Responses API model used for transaction questions and report runs.   | No       | `gpt-5.4-mini` |
-| `OPENAI_ASSISTANT_ROUTER_MODEL`  | The model used to route Telegram messages to assistant functions.         | No       | `gpt-5.4-mini` |
+| `OPENAI_PROCESS_EMAIL_MODEL`     | The model used by OpenAI for email/manual transaction processing.         | Yes      | `gpt-5.6-luna` |
+| `OPENAI_OCR_MODEL`               | The vision model used to extract receipt text from Telegram images.       | No       | `gpt-5.6-luna` |
+| `OPENAI_ASSISTANT_MODEL`         | The Responses API model used for transaction questions and report runs.   | No       | `gpt-5.6-luna` |
+| `OPENAI_ASSISTANT_ROUTER_MODEL`  | The model used to route Telegram messages to assistant functions.         | No       | `gpt-5.6-luna` |
 | `OPENAI_ASSISTANT_VECTORSTORE_ID`| The vector store identifier for storing processed data in OpenAI and answering questions with file search. | Yes      | -       |
 
 ## TODO
