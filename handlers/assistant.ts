@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { formatDate } from '../utils/date';
 import { createOpenAIClient } from '../services/openai';
-import { processTransaction, storeTransaction, notifyServices } from './transactions';
+import { processTransaction, persistTransaction, notifyServices } from './transactions';
 import { buildMessageWithReplyContext, sendTelegramMessage } from '../services/telegram';
 import type { Environment } from '../types';
 
@@ -100,7 +100,7 @@ const assistantOcr = async (message, c) => {
 	const transactionDetails = await processTransaction(transaction, c.env);
 
 	if (!transactionDetails) return 'Not okay';
-	await Promise.all([storeTransaction(transactionDetails, c.env), notifyServices(transactionDetails, c.env)]);
+	await Promise.all([persistTransaction(transactionDetails, c.env, 'ocr'), notifyServices(transactionDetails, c.env)]);
 	return '📬 Email processed successfully';
 };
 
@@ -119,7 +119,7 @@ const assistantManualTransaction = async (transaction, env: Environment) => {
 	const transactionDetails = await processTransaction(buildManualTransactionInput(transaction), env, 'manual');
 
 	if (!transactionDetails) return 'Not okay';
-	await Promise.all([storeTransaction(transactionDetails, env), notifyServices(transactionDetails, env, '✅ *Đã thêm giao dịch thủ công*')]);
+	await Promise.all([persistTransaction(transactionDetails, env, 'manual'), notifyServices(transactionDetails, env, '✅ *Đã thêm giao dịch thủ công*')]);
 	return '📬 Email processed successfully';
 };
 
