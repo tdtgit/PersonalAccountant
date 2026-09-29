@@ -1,4 +1,5 @@
 import { Telegraf } from 'telegraf';
+import { parseCurrencyAmount } from '../utils/money';
 import type { Environment } from '../types';
 
 const formatVietnameseNumber = (value: string) => {
@@ -16,29 +17,6 @@ const formatVietnameseNumber = (value: string) => {
     return new Intl.NumberFormat('vi-VN', {
         maximumFractionDigits: Number.isInteger(parsedValue) ? 0 : 2,
     }).format(parsedValue);
-};
-
-const parseCurrencyAmount = (value: string) => {
-    const normalizedValue = value.trim().replace(/\s/g, '');
-    const lastComma = normalizedValue.lastIndexOf(',');
-    const lastDot = normalizedValue.lastIndexOf('.');
-
-    if (lastComma > -1 && lastDot > -1) {
-        const decimalSeparator = lastComma > lastDot ? ',' : '.';
-        const thousandsSeparator = decimalSeparator === ',' ? '.' : ',';
-        return Number(normalizedValue.replace(new RegExp(`\\${thousandsSeparator}`, 'g'), '').replace(decimalSeparator, '.'));
-    }
-
-    const separator = lastComma > -1 ? ',' : lastDot > -1 ? '.' : '';
-    if (!separator) return Number(normalizedValue);
-
-    const separatorIndex = normalizedValue.lastIndexOf(separator);
-    const digitsAfterSeparator = normalizedValue.length - separatorIndex - 1;
-    const isDecimalSeparator = digitsAfterSeparator > 0 && digitsAfterSeparator <= 2;
-
-    return Number(isDecimalSeparator
-        ? normalizedValue.replace(separator, '.')
-        : normalizedValue.replace(new RegExp(`\\${separator}`, 'g'), ''));
 };
 
 const formatDong = (value: number) => `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(Math.round(value))}đ`;
