@@ -2,7 +2,8 @@ import PostalMime from 'postal-mime';
 import { Buffer } from 'node:buffer';
 import { createOpenAIClient } from '../services/openai';
 import { formatTransactionDetails, sendTelegramMessage } from '../services/telegram';
-import type { Environment } from '../types';
+import { saveTransaction } from '../services/transactions-store';
+import type { Environment, TransactionDetails } from '../types';
 
 export const processTransaction = async (emailData: string, env: Environment, source: 'email' | 'manual' | 'ocr' = 'email') => {
     console.log(`🤖 Processing ${source} content: ${emailData}`);
@@ -96,6 +97,32 @@ export const storeTransaction = async (details, env: Environment) => {
     console.info(`🤖 Add ${fileName} to Vector store successfully`);
 };
 
+/**
+ * Writes the transaction to D1 alongside the vector store upload.
+ *
+ * The vector store remains the read path, so this is additive: a D1 failure is
+ * logged and swallowed rather than allowed to break notification or the
+ * existing upload.
+ */
+export const storeTransactionRecord = async (details: TransactionDetails, env: Environment, source: 'email' | 'manual' | 'ocr') => {
+    if (!env.DB) {
+        console.warn('🗄️ No D1 binding configured, skipping structured write');
+        return null;
+    }
+
+    try {
+        return await saveTransaction(env, details, source);
+    } catch (error) {
+        console.error('🗄️ Failed to store transaction in D1', error);
+        return null;
+    }
+};
+
+/** Uploads to the vector store and mirrors the transaction into D1. */
+export const persistTransaction = async (details: TransactionDetails, env: Environment, source: 'email' | 'manual' | 'ocr') => {
+    await Promise.all([storeTransaction(details, env), storeTransactionRecord(details, env, source)]);
+};
+
 export const notifyServices = async (details: any, env: Environment, headline?: string) => {
     const message = formatTransactionDetails(details, headline);
     await sendTelegramMessage(env, message);
@@ -115,6 +142,6 @@ export const email = async (message, env: Environment) => {
 
     if (!transactionDetails) return "Not okay";
 
-    await Promise.all([storeTransaction(transactionDetails, env), notifyServices(transactionDetails, env)]);
+    await Promise.all([persistTransaction(transactionDetails, env, 'email'), notifyServices(transactionDetails, env)]);
     return "📬 Email processed successfully";
 };

@@ -19,6 +19,9 @@ Transaction emails will be forwarded to a "virtual" email address managed by [Cl
 
 1. Trigger a notification (currently set to send alerts via Telegram).
 2. Upload the processed text to the [vector database store](https://platform.openai.com/storage/vector_stores) on the OpenAI platform.
+3. Mirror the same transaction into a [Cloudflare D1](https://developers.cloudflare.com/d1/) table as structured rows.
+
+The vector store remains the read path: questions asked through Telegram are still answered with file search. The D1 table is written in parallel so the structured data accumulates and can be verified before any query is switched over to it.
 
 Since the data is stored in a personal vector database, you can make queries by sending a message to your Telegram bot. The bot will then call the Cloudflare worker using a Telegram webhook. These "on-demand" requests will be processed by the [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses) with file search over the configured vector store.
 
@@ -69,10 +72,33 @@ The application requires the following environment variables:
 | `OPENAI_ASSISTANT_MODEL`         | The Responses API model used for transaction questions and report runs.   | No       | `gpt-5.6-luna` |
 | `OPENAI_ASSISTANT_ROUTER_MODEL`  | The model used to route Telegram messages to assistant functions.         | No       | `gpt-5.6-luna` |
 | `OPENAI_ASSISTANT_VECTORSTORE_ID`| The vector store identifier for storing processed data in OpenAI and answering questions with file search. | Yes      | -       |
+| `TRANSACTION_DUPLICATE_WINDOW_MINUTES` | Minutes either side of a transaction to look for the same payment reported by a second sender. | No | `15` |
+
+## Structured transaction store
+
+Transactions are mirrored into a D1 database alongside the vector store upload. Create the database and apply the migration:
+
+```bash
+bunx wrangler d1 create personalaccountant
+# copy the returned database_id into the d1_databases block in wrangler.jsonc
+bunx wrangler d1 migrations apply personalaccountant --remote
+```
+
+The schema keeps amounts as integers in minor units, records the merchant-side amount separately when a bank settles a foreign charge in another currency, and freezes the exchange rate used at the time a transaction is recorded so historical reports do not drift. A `transactions_fts` FTS5 index covers the free-text columns with diacritics folded, so untoned Vietnamese queries still match.
+
+Two kinds of duplicate are handled differently:
+
+* **Delivery retries** — the same email or webhook arriving twice is dropped by a unique constraint.
+* **One payment, two senders** — a merchant receipt and the matching bank debit arrive minutes apart. The second row is kept but linked to the first through `duplicate_of`, so both remain queryable while totals count the payment once. A debit paired with a credit is treated as a transfer between accounts rather than a duplicate.
+
+Writes to D1 are best-effort: a failure is logged and does not interrupt notification or the vector store upload. If no `DB` binding is configured, the structured write is skipped entirely.
+
+A daily job refreshes exchange rates and fills in any transaction recorded while no rate was available, converting each row with the rate for its own date. A transaction is never blocked on an exchange rate lookup.
 
 ## TODO
 - [ ] Whitelist email addresses.
 - [ ] Notify to channel, group chat instead
+- [ ] Switch the query path from vector store file search to the structured store
 
 ## Additional information
 

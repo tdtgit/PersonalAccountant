@@ -5,6 +5,7 @@ import { requestId } from 'hono/request-id';
 import { secureHeaders } from 'hono/secure-headers';
 import { dailyReport, handleAssistantRequest, monthlyReport, weeklyReport } from './handlers/assistant';
 import { email as processEmail } from './handlers/transactions';
+import { backfillExchangeRates } from './services/fx';
 import type { Environment } from './types';
 
 export { buildMessageWithReplyContext, convertCurrencyAmountsToVnd, formatCurrencyAmounts, formatTransactionDetails, normalize, stripTelegramMarkdown } from './services/telegram';
@@ -44,6 +45,10 @@ export default {
             case "0 15 1 * *":
                 console.info("⏰ Monthly scheduler triggered");
                 await monthlyReport(env);
+                break;
+            case "0 18 * * *":
+                console.info("💱 Exchange rate scheduler triggered");
+                if (env.DB) await backfillExchangeRates(env);
                 break;
         }
     },
